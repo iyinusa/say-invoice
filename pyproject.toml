@@ -1,0 +1,57 @@
+[project]
+name = "sayinvoice"
+version = "0.1.0"
+description = "Speak the job, get paid: voice-first quotes, negotiation, deposits and invoices on PayPal."
+readme = "README.md"
+requires-python = ">=3.12,<3.13"
+license = { text = "MIT" }
+
+dependencies = [
+    "fastapi>=0.115",
+    "uvicorn[standard]>=0.30",
+    "pydantic>=2.7",
+    "pydantic-settings>=2.3",
+    "sqlalchemy[asyncio]>=2.0.30",
+    "asyncpg>=0.29",
+    "aiosqlite>=0.20",
+    "alembic>=1.13",
+    "httpx>=0.27",
+    "structlog>=24.1",
+    "python-multipart>=0.0.9",
+    "email-validator>=2.1",
+    "jinja2>=3.1",
+    "google-adk>=2.13",
+    "google-genai>=2.33",
+    "mcp>=1.9",
+]
+
+[dependency-groups]
+dev = [
+    "pytest>=8.2",
+    "pytest-asyncio>=0.23",
+    "ruff>=0.5",
+]
+
+[tool.uv]
+package = false
+
+[tool.ruff]
+line-length = 100
+target-version = "py312"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "B", "UP", "S", "ASYNC"]
+ignore = [
+    "S101",  # allow assert in tests
+    "B008",  # FastAPI uses Depends() in default args by design
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/*" = ["S105", "S106"]
+"alembic/*" = ["E501"]
+"scripts/*" = ["T201"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
+filterwarnings = ["ignore::DeprecationWarning"]

@@ -1,0 +1,96 @@
+from __future__ import annotations
+
+import os
+from functools import lru_cache
+
+from pydantic import Field, field_validator
+from pydantic_settings import BaseSettings, SettingsConfigDict
+
+
+class Settings(BaseSettings):
+    model_config = SettingsConfigDict(
+        env_prefix="SI_",
+        env_file=".env",
+        env_file_encoding="utf-8",
+        extra="ignore",
+    )
+
+    env: str = "development"
+
+    # Where the app is reachable from the outside world. Used to build the
+    # client-facing quote and payment-plan links (`/q/{token}`, `/p/{token}`).
+    public_base_url: str = "http://localhost:8000"
+
+    # SQLite by default so a judge can run the app with zero setup; Render and
+    # production point this at Postgres. Render hands out `postgres://` URLs,
+    # which the validator below rewrites for the asyncpg driver.
+    database_url: str = Field(
+        default="sqlite+aiosqlite:///./sayinvoice.db",
+        description="Async SQLAlchemy URL.",
+    )
+
+    # ── PayPal ──────────────────────────────────────────────────────────────
+    # Sandbox REST app credentials (developer.paypal.com → Apps & Credentials).
+    paypal_client_id: str = ""
+    paypal_client_secret: str = ""
+    # `sandbox` or `live`. The hackathon runs entirely on sandbox.
+    paypal_env: str = "sandbox"
+    # The webhook ID PayPal shows after you register
+    # `{public_base_url}/api/webhooks/paypal`. Signature verification needs it;
+    # while empty, the webhook endpoint refuses every delivery.
+    paypal_webhook_id: str = ""
+    # Must be the sandbox *Business* account's email: PayPal rejects invoices
+    # whose invoicer email is not the merchant behind the REST credentials.
+    paypal_merchant_email: str = ""
+    # How to launch PayPal's MCP server (Agent Toolkit tools for the agents).
+    # The Docker image pre-installs it and overrides this with a plain `node` call.
+    paypal_mcp_command: str = "npx -y @paypal/mcp@1.8.1"
+
+    # ── Gemini / ADK ────────────────────────────────────────────────────────
+    # AI Studio API key (simplest for local runs). Leave empty and set the
+    # Vertex fields instead to run on Vertex AI.
+    google_api_key: str = ""
+    vertex_project: str = ""
+    vertex_location: str = "us-central1"
+    gemini_model: str = "gemini-2.5-flash"
+
+    @field_validator("database_url")
+    @classmethod
+    def _async_driver(cls, v: str) -> str:
+        if v.startswith("postgres://"):
+            return "postgresql+asyncpg://" + v.removeprefix("postgres://")
+        if v.startswith("postgresql://"):
+            return "postgresql+asyncpg://" + v.removeprefix("postgresql://")
+        return v
+
+    @property
+    def is_production(self) -> bool:
+        return self.env.lower() == "production"
+
+    @property
+    def paypal_base_url(self) -> str:
+        if self.paypal_env.lower() == "live":
+            return "https://api-m.paypal.com"
+        return "https://api-m.sandbox.paypal.com"
+
+    @property
+    def paypal_configured(self) -> bool:
+        return bool(self.paypal_client_id and self.paypal_client_secret)
+
+    def apply_google_env(self) -> None:
+        """Expose Gemini credentials through the env vars google-genai / ADK read.
+
+        `setdefault` so an explicit process environment wins over `.env`.
+        """
+        if self.google_api_key:
+            os.environ.setdefault("GOOGLE_API_KEY", self.google_api_key)
+            os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "FALSE")
+        elif self.vertex_project:
+            os.environ.setdefault("GOOGLE_CLOUD_PROJECT", self.vertex_project)
+            os.environ.setdefault("GOOGLE_CLOUD_LOCATION", self.vertex_location)
+            os.environ.setdefault("GOOGLE_GENAI_USE_VERTEXAI", "TRUE")
+
+
+@lru_cache
+def get_settings() -> Settings:
+    return Settings()
