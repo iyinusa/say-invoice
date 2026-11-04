@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from datetime import UTC, date, datetime
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException
@@ -14,22 +14,22 @@ from app.models import Workspace
 from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.routers.invoices import current_workspace
 from app.schemas.invoice import InvoiceOut
+from app.services import clock, invoicing, money_view, quotes
 from app.services import invoice_actions as actions
-from app.services import invoicing, money_view, quotes
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api", tags=["money"])
 
 
-def today() -> date:
-    return datetime.now(UTC).date()
+def today(ws: Workspace) -> date:
+    return clock.today_for(ws)
 
 
 @router.get("/home")
 async def who_owes_me(
     session: AsyncSession = Depends(get_session), ws: Workspace = Depends(current_workspace)
 ) -> dict[str, object]:
-    return await money_view.home(session, ws, today())
+    return await money_view.home(session, ws, today(ws))
 
 
 @router.get("/jobs/invoice/{invoice_id}")
@@ -41,7 +41,9 @@ async def invoice_job(
     inv = await invoicing.get_invoice(session, ws, invoice_id)
     if inv is None:
         raise HTTPException(404, "invoice not found")
-    return await money_view.invoice_detail(session, ws, inv, today())
+    detail = await money_view.invoice_detail(session, ws, inv, today(ws))
+    await session.commit()  # an older invoice gets its "propose a plan" token here: keep it
+    return detail
 
 
 @router.get("/jobs/quote/{quote_id}")
@@ -54,7 +56,7 @@ async def quote_job(
     q = await quotes.get_quote(session, ws, quote_id)
     if q is None:
         raise HTTPException(404, "quote not found")
-    return await money_view.quote_detail(session, ws, q, today(), settings.public_base_url)
+    return await money_view.quote_detail(session, ws, q, today(ws), settings.public_base_url)
 
 
 class RemindIn(BaseModel):
@@ -110,8 +112,10 @@ async def mark_paid(
 ) -> InvoiceOut:
     inv = await _invoice(session, ws, invoice_id)
     try:
-        await actions.record_payment(session, paypal, ws, inv, amount=data.amount,
-                                     method=data.method, note=data.note, today=today())  # fmt: skip
+        await actions.record_payment(
+            session, paypal, ws, inv, amount=data.amount, method=data.method,
+            note=data.note, today=today(ws),
+        )  # fmt: skip
     except actions.ActionRefused as exc:
         raise _refused(exc) from exc
     except PayPalError as exc:
@@ -146,7 +150,7 @@ async def retry_send(
 ) -> InvoiceOut:
     inv = await _invoice(session, ws, invoice_id)
     try:
-        await actions.retry(session, paypal, ws, inv, today=today())
+        await actions.retry(session, paypal, ws, inv, today=today(ws))
     except actions.ActionRefused as exc:
         raise _refused(exc) from exc
     except PayPalError as exc:

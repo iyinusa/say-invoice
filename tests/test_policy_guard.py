@@ -219,6 +219,7 @@ def test_a_free_extra_job_is_sent_to_the_owner() -> None:
         ("£1,250 all in", ["1250.00"]),
         ("about 120 quid, or 95 pounds", ["120.00", "95.00"]),
         ("GBP 40 for parts", ["40.00"]),
+        ("a balance of 100.00 GBP", ["100.00"]),  # the code after the number counts too
         ("10% off, 2 hours, Saturday the 7th", []),
     ],
 )

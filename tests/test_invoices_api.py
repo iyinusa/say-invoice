@@ -72,6 +72,13 @@ class FakePayPal:
         self._maybe_fail("cancel")
         self.remote[invoice_id] = {"id": invoice_id, "status": "CANCELLED"}
 
+    async def update_invoice(
+        self, invoice_id: str, body: Mapping[str, Any], *, notify_recipient: bool = True
+    ) -> dict[str, Any]:
+        self.calls.append(("update", {"invoice_id": invoice_id, "body": dict(body)}))
+        self._maybe_fail("update")
+        return dict(body)
+
     async def remind(self, invoice_id: str, *, subject: str = "", note: str = "") -> None:
         self.calls.append(("remind", {"invoice_id": invoice_id, "subject": subject, "note": note}))
         self._maybe_fail("remind")
@@ -147,7 +154,8 @@ def test_send_creates_and_sends_a_paypal_invoice(client: TestClient, paypal: Fak
 
     body = paypal.last("create")["body"]
     assert body["detail"]["currency_code"] == "GBP"
-    assert body["detail"]["note"] == "Thanks!"
+    assert body["detail"]["note"].startswith("Thanks!\n\nCan't pay it all at once?")
+    assert "/p/" in body["detail"]["note"]  # every invoice offers a payment plan
     assert body["invoicer"]["business_name"] == "Dave's Plumbing"
     assert [i["unit_of_measure"] for i in body["items"]] == ["HOURS", "QUANTITY"]
     assert [i["quantity"] for i in body["items"]] == ["2", "1"]

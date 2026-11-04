@@ -26,6 +26,8 @@ from app.money import line_total, subtotal, to_money
 from app.paypal.client import PayPalError
 from app.paypal.invoices import InvoiceDraft, Item, Party, UnitOfMeasure, build_invoice_body
 from app.schemas.invoice import InvoiceIn, InvoiceItemOut, InvoiceOut
+from app.services.clock import real_today
+from app.services.plan_links import ensure_token, plan_line
 from app.settings import Settings
 
 log = get_logger("invoicing")
@@ -161,6 +163,7 @@ async def create_and_send(
         inv = Invoice(
             workspace_id=ws.id, idempotency_key=data.idempotency_key, kind=kind, quote_id=quote_id
         )
+        ensure_token(inv)  # the client's "propose a plan" link
         _fill(inv, data, client, ws, today, discount)
         session.add(inv)
         await session.flush()
@@ -184,6 +187,12 @@ async def create_and_send(
     return await push_to_paypal(session, paypal, ws, inv, today=today)
 
 
+def _note_with_plan_link(inv: Invoice) -> str:
+    if inv.kind == "deposit":
+        return inv.note
+    return f"{inv.note}\n\n{plan_line(inv)}".strip()[:4000]
+
+
 def to_paypal_draft(inv: Invoice, ws: Workspace, today: date) -> InvoiceDraft:
     def uom(unit: str, qty: Decimal) -> UnitOfMeasure:
         if unit == "hours":
@@ -205,9 +214,12 @@ def to_paypal_draft(inv: Invoice, ws: Workspace, today: date) -> InvoiceDraft:
         ],
         recipient=Party(inv.client.name, inv.client.email),
         invoicer=Party(ws.owner_name, ws.owner_email, ws.business_name),
-        invoice_date=today,
+        invoice_date=real_today(),  # PayPal refuses invoice dates in the future (demo clock)
         due_date=inv.due_date,
-        note=inv.note,
+        # A deposit is paid at once to book the work; everything else offers a plan.
+        note=(inv.note if inv.kind == "deposit" else f"{inv.note}\n\n{plan_line(inv)}".strip())[
+            :4000
+        ],
         discount=inv.discount if inv.discount > 0 else None,
     )
 

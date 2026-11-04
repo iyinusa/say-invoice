@@ -51,10 +51,9 @@ def _texts(parts: list[types.Part]) -> list[str]:
     return [p.text for p in parts if p.text]
 
 
-def test_text_parse_returns_a_card_with_code_totals(model: FakeModel) -> None:
+def test_text_parse_returns_a_card_with_code_totals(client: TestClient, model: FakeModel) -> None:
     model.outcomes = [KENNEDY]
-    with TestClient(app) as client:
-        resp = client.post("/api/parse", data={"text": KENNEDY.transcript, "tz": "Europe/London"})
+    resp = client.post("/api/parse", data={"text": KENNEDY.transcript, "tz": "Europe/London"})
     assert resp.status_code == 200
     card = resp.json()
     assert card["subtotal"] == "145.00"
@@ -67,13 +66,12 @@ def test_text_parse_returns_a_card_with_code_totals(model: FakeModel) -> None:
     assert "workspace currency is GBP" in system
 
 
-def test_audio_goes_to_the_model_with_a_clean_mime(model: FakeModel) -> None:
+def test_audio_goes_to_the_model_with_a_clean_mime(client: TestClient, model: FakeModel) -> None:
     model.outcomes = [KENNEDY]
-    with TestClient(app) as client:
-        resp = client.post(
-            "/api/parse",
-            files={"audio": ("note.webm", b"\x1aE\xdf\xa3fake", "audio/webm;codecs=opus")},
-        )
+    resp = client.post(
+        "/api/parse",
+        files={"audio": ("note.webm", b"\x1aE\xdf\xa3fake", "audio/webm;codecs=opus")},
+    )
     assert resp.status_code == 200
     parts, _ = model.calls[0]
     assert parts[0].inline_data is not None
@@ -81,7 +79,7 @@ def test_audio_goes_to_the_model_with_a_clean_mime(model: FakeModel) -> None:
     assert parts[0].inline_data.data == b"\x1aE\xdf\xa3fake"
 
 
-def test_follow_up_answer_completes_the_card(model: FakeModel) -> None:
+def test_follow_up_answer_completes_the_card(client: TestClient, model: FakeModel) -> None:
     answered = KENNEDY.model_copy(
         update={
             "transcript": "kennedy@example.com",
@@ -91,12 +89,11 @@ def test_follow_up_answer_completes_the_card(model: FakeModel) -> None:
         }
     )
     model.outcomes = [KENNEDY, answered]
-    with TestClient(app) as client:
-        first = client.post("/api/parse", data={"text": KENNEDY.transcript}).json()
-        resp = client.post(
-            "/api/parse",
-            data={"text": "kennedy@example.com", "previous": json.dumps(first["draft"])},
-        )
+    first = client.post("/api/parse", data={"text": KENNEDY.transcript}).json()
+    resp = client.post(
+        "/api/parse",
+        data={"text": "kennedy@example.com", "previous": json.dumps(first["draft"])},
+    )
     card = resp.json()
     assert card["ready"] is True
     assert card["client_email"] == "kennedy@example.com"
@@ -108,34 +105,30 @@ def test_follow_up_answer_completes_the_card(model: FakeModel) -> None:
     assert texts[1] == "kennedy@example.com"
 
 
-def test_requested_quote_mode_wins(model: FakeModel) -> None:
+def test_requested_quote_mode_wins(client: TestClient, model: FakeModel) -> None:
     model.outcomes = [KENNEDY]
-    with TestClient(app) as client:
-        card = client.post("/api/parse", data={"text": "quote it", "mode": "quote"}).json()
+    card = client.post("/api/parse", data={"text": "quote it", "mode": "quote"}).json()
     assert card["mode"] == "quote"
     assert card["ready"] is True  # a name is enough for a quote
 
 
-def test_one_retry_then_success(model: FakeModel) -> None:
+def test_one_retry_then_success(client: TestClient, model: FakeModel) -> None:
     model.outcomes = [TimeoutError(), KENNEDY]
-    with TestClient(app) as client:
-        resp = client.post("/api/parse", data={"text": "boiler"})
+    resp = client.post("/api/parse", data={"text": "boiler"})
     assert resp.status_code == 200
     assert len(model.calls) == 2
 
 
-def test_two_failures_offer_type_instead(model: FakeModel) -> None:
+def test_two_failures_offer_type_instead(client: TestClient, model: FakeModel) -> None:
     model.outcomes = [TimeoutError(), errors.ServerError(503, {"error": {"message": "busy"}})]
-    with TestClient(app) as client:
-        resp = client.post("/api/parse", data={"text": "boiler"})
+    resp = client.post("/api/parse", data={"text": "boiler"})
     assert resp.status_code == 503
     assert "type it instead" in resp.json()["detail"]
 
 
-def test_bad_request_to_the_model_is_not_retried(model: FakeModel) -> None:
+def test_bad_request_to_the_model_is_not_retried(client: TestClient, model: FakeModel) -> None:
     model.outcomes = [errors.ClientError(400, {"error": {"message": "bad audio"}}), KENNEDY]
-    with TestClient(app) as client:
-        resp = client.post("/api/parse", data={"text": "boiler"})
+    resp = client.post("/api/parse", data={"text": "boiler"})
     assert resp.status_code == 503
     assert len(model.calls) == 1
 
@@ -152,32 +145,31 @@ def test_bad_request_to_the_model_is_not_retried(model: FakeModel) -> None:
     ],
 )
 def test_bad_input_is_refused_before_the_model(
-    model: FakeModel, kwargs: dict[str, object], status: int
+    client: TestClient, model: FakeModel, kwargs: dict[str, object], status: int
 ) -> None:
-    with TestClient(app) as client:
-        resp = client.post("/api/parse", **kwargs)  # type: ignore[arg-type]
+    resp = client.post("/api/parse", **kwargs)  # type: ignore[arg-type]
     assert resp.status_code == status
     assert model.calls == []
 
 
-def test_oversized_audio_is_refused(model: FakeModel, monkeypatch: pytest.MonkeyPatch) -> None:
+def test_oversized_audio_is_refused(
+    client: TestClient, model: FakeModel, monkeypatch: pytest.MonkeyPatch
+) -> None:
     from app.settings import get_settings
 
     monkeypatch.setattr(get_settings(), "max_audio_bytes", 10)
-    with TestClient(app) as client:
-        resp = client.post("/api/parse", files={"audio": ("a.webm", b"x" * 11, "audio/webm")})
+    resp = client.post("/api/parse", files={"audio": ("a.webm", b"x" * 11, "audio/webm")})
     assert resp.status_code == 413
     assert model.calls == []
 
 
-def test_no_gemini_key_is_503_not_500() -> None:
+def test_no_gemini_key_is_503_not_500(client: TestClient) -> None:
     def not_configured() -> None:
         raise ParserNotConfigured("no key")
 
     app.dependency_overrides[get_job_parser] = not_configured
     try:
-        with TestClient(app) as client:
-            resp = client.post("/api/parse", data={"text": "boiler"})
+        resp = client.post("/api/parse", data={"text": "boiler"})
     finally:
         app.dependency_overrides.clear()
     assert resp.status_code == 503

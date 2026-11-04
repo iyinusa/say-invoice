@@ -17,6 +17,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 from app.models import DealMessage, Event, Invoice, Quote, Workspace
 from app.money import compact, display
 from app.services import quotes as quote_svc
+from app.services.plan_links import current_due, plan_url
 
 OPEN = ("sent", "partially_paid", "overdue")
 OPEN_QUOTES = ("sent", "negotiating", "awaiting_owner")
@@ -28,9 +29,11 @@ def balance(inv: Invoice) -> Decimal:
 
 
 def days_overdue(inv: Invoice, today: date) -> int:
-    if inv.status not in OPEN or inv.due_date is None:
+    """On a plan, lateness is measured from the next unpaid instalment, not the final date."""
+    due = current_due(inv)
+    if inv.status not in OPEN or due is None:
         return 0
-    return max(0, (today - inv.due_date).days)
+    return max(0, (today - due).days)
 
 
 def state(inv: Invoice, today: date) -> str:
@@ -50,6 +53,12 @@ def _when(d: date | None) -> str:
     return f"{d:%a} {d.day} {d:%b}" if d else ""
 
 
+def _owed_label(inv: Invoice) -> str:
+    if inv.plan:
+        return f"plan: next {_when(current_due(inv))}"
+    return f"due {_when(inv.due_date)}" if inv.due_date else "due on receipt"
+
+
 def invoice_row(inv: Invoice, today: date, quote_number: str | None = None) -> dict[str, Any]:
     st = state(inv, today)
     what = KIND_LABEL.get(inv.kind, "Invoice")
@@ -59,7 +68,13 @@ def invoice_row(inv: Invoice, today: date, quote_number: str | None = None) -> d
     late = days_overdue(inv, today)
     detail = {
         "draft": "Not sent: tap to retry",
-        "owed": f"due {_when(inv.due_date)}" if inv.due_date else "due on receipt",
+        "owed": (
+            f"plan: next {_when(current_due(inv))}"
+            if inv.plan
+            else f"due {_when(inv.due_date)}"
+            if inv.due_date
+            else "due on receipt"
+        ),  # fmt: skip
         "overdue": f"{late} day{'s' if late != 1 else ''} overdue",
         "paid": f"paid {_when(inv.paid_at.date())}" if inv.paid_at else "paid",
         "cancelled": "cancelled",
@@ -198,6 +213,7 @@ def _event_entry(ev: Event, cur: str) -> dict[str, Any] | None:
         "reminder_sent": "Reminder sent"
         + (" by you" if d.get("by") == "owner" else " by the Chase Agent"),
         "payment_recorded": f"Marked as paid ({method}, {amt('amount')})",
+        "plan_agreed": f"Payment plan agreed: {len(d.get('instalments', []))} payments",
     }.get(ev.kind)
     if label is None:
         return None
@@ -275,8 +291,23 @@ async def invoice_detail(
             for i in inv.items
         ],
         "actions": invoice_actions(inv, st),
+        "plan": _plan_rows(inv, today),
+        "plan_url": plan_url(inv) if st in ("owed", "overdue") and not inv.plan else "",
         "timeline": entries,
     }
+
+
+def _plan_rows(inv: Invoice, today: date) -> list[dict[str, Any]]:
+    if not inv.plan:
+        return []
+    covered, rows = Decimal(0), []
+    for row in inv.plan.get("instalments", []):
+        covered += Decimal(row["amount"])
+        due = date.fromisoformat(row["due"])
+        status = "paid" if inv.amount_paid >= covered else ("late" if due < today else "upcoming")
+        rows.append({"due": _when(due), "amount": display(Decimal(row["amount"]), inv.currency),
+                     "status": status})  # fmt: skip
+    return rows
 
 
 async def quote_detail(

@@ -12,6 +12,7 @@ from app.models.core import (
     LineItem,
     Quote,
     QuoteLine,
+    Reminder,
     Workspace,
 )
 
@@ -25,5 +26,6 @@ __all__ = [
     "LineItem",
     "Quote",
     "QuoteLine",
+    "Reminder",
     "Workspace",
 ]

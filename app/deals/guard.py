@@ -328,7 +328,7 @@ _SYMBOLS = {"£": "GBP", "$": "USD", "€": "EUR"}
 _NUMBER = r"(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?"
 _AMOUNT = re.compile(
     rf"(?:[£$€]\s?|\b(?:GBP|USD|EUR)\s?){_NUMBER}"
-    rf"|\b{_NUMBER}\s?(?:pounds?|quid|euros?|dollars?|bucks)\b",
+    rf"|\b{_NUMBER}\s?(?:pounds?|quid|euros?|dollars?|bucks|GBP|USD|EUR)\b",
     re.IGNORECASE,
 )
 

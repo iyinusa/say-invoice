@@ -419,6 +419,39 @@ input[type="date"].control::-webkit-calendar-picker-indicator { margin-left: 4px
 .empty { padding: 32px 16px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
 .empty p { margin: 0; }
 
+/* ── demo clock ─────────────────────────────────────────── */
+.demo-banner {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px;
+  padding: 8px 12px; border-radius: 12px; background: var(--flag-soft); border: 1px solid var(--flag-line);
+  color: var(--flag); font-size: 14px; font-weight: 700;
+}
+.demo-banner button { border: 0; background: none; color: var(--flag); font-weight: 800; text-decoration: underline; cursor: pointer; min-height: 32px; }
+.demo-clock {
+  display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px;
+  padding: 10px 12px; border-radius: 12px; border: 1px dashed var(--line-strong); font-size: 14px;
+}
+.demo-label { color: var(--muted); }
+.demo-label b { color: var(--ink-2); }
+.demo-buttons { display: flex; gap: 6px; }
+.demo-buttons .btn.small { min-height: 36px; padding: 0 10px; }
+
+/* ── chase agent ────────────────────────────────────────── */
+.chase { margin: 0 0 20px; padding: 14px 16px; background: var(--surface); border: 1px solid var(--line); border-radius: var(--r-lg); box-shadow: var(--shadow); }
+.chase-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
+.chase-head h2 { margin: 0; font-size: 17px; }
+.chase-mode { margin: 2px 0 0; font-size: 14px; color: var(--muted); }
+.reminder { margin-top: 14px; padding-top: 14px; border-top: 1px solid var(--line); display: grid; gap: 10px; }
+.reminder header { display: flex; flex-wrap: wrap; align-items: baseline; gap: 6px; }
+.reminder header .muted { font-size: 14px; }
+.tone { padding: 2px 10px; border-radius: 999px; font-size: 12px; font-weight: 800; text-transform: capitalize; background: var(--surface-2); border: 1px solid var(--line); color: var(--ink-2); }
+.tone.firm { background: var(--flag-soft); border-color: var(--flag-line); color: var(--flag); }
+.tone.final { background: var(--flag); border-color: var(--flag); color: var(--surface); }
+.reminder-note { margin: 0; padding: 12px 14px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); white-space: pre-wrap; }
+.reminder-meta { margin: 0; display: flex; flex-wrap: wrap; gap: 4px 12px; font-size: 13px; color: var(--muted); }
+.reminder-meta .checked { color: var(--brand); font-weight: 700; }
+.reminder-actions { display: flex; gap: 8px; }
+.reminder-actions .btn.small { flex: 1; }
+
 /* ── job page ───────────────────────────────────────────── */
 .back { border: 0; background: none; color: var(--brand); font-weight: 600; min-height: 44px; padding: 0; cursor: pointer; }
 .detail .doc-kicker { margin: 8px 0 0; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
@@ -483,6 +516,10 @@ input[type="date"].control::-webkit-calendar-picker-indicator { margin-left: 4px
 .sheet-kicker { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.04em; text-transform: uppercase; color: var(--flag); }
 .asked { margin: 0 0 10px; padding: 12px 14px; border-left: 3px solid var(--flag-line); background: var(--flag-soft); border-radius: 0 12px 12px 0; font-size: 17px; }
 .sheet-summary { margin: 0 0 14px; color: var(--ink-2); }
+.plan-ask { display: grid; gap: 2px; margin: 0 0 14px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
+.plan-ask span { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.plan-rows li.paid span:last-child { color: var(--brand); }
+.plan-rows li.late span:first-child { color: var(--flag); font-weight: 600; }
 .sheet-note { margin: -6px 0 14px; font-size: 14px; color: var(--muted); }
 .compare { display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 8px; margin-bottom: 16px; padding: 12px; border-radius: 12px; background: var(--surface-2); border: 1px solid var(--line); }
 .compare div { display: grid; gap: 2px; }

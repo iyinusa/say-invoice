@@ -30,6 +30,11 @@
     </span>
   </header>
 
+  <div class="demo-banner" x-show="clockInfo && clockInfo.offset_days > 0" role="status">
+    <span x-text="`Demo clock +${clockInfo?.offset_days} day${clockInfo?.offset_days === 1 ? '' : 's'} · ${clockInfo?.today_label}`"></span>
+    <button @click="setClock(0)" aria-label="Reset the demo clock to today">Reset</button>
+  </div>
+
   <!-- ── 1. Record ─────────────────────────────────────────────── -->
   <section class="screen record" x-show="screen === 'record'">
     <h1>What did you do?</h1>
@@ -375,6 +380,15 @@
             <input type="checkbox" role="switch" class="switch" x-model="policy.date_negotiable"></label>
         </div>
 
+        <h2 class="group-title">Chasing</h2>
+        <div class="group">
+          <label class="setting">
+            <span class="setting-text"><b>Send reminders without asking me</b>
+              <small>Off: the Chase Agent drafts each reminder and waits for your OK.</small></span>
+            <input type="checkbox" role="switch" class="switch" x-model="autoChase" @change="saveChase()">
+          </label>
+        </div>
+
         <h2 class="group-title">Approval</h2>
         <div class="group">
           <label class="setting">
@@ -421,6 +435,50 @@
             <span class="stat-sub" x-text="`${home.totals.quotes_count} waiting`"></span>
           </button>
         </div>
+
+        <div class="demo-clock" x-show="clockInfo?.enabled">
+          <span class="demo-label"><b>Demo clock</b> <span x-text="clockInfo?.today_label"></span></span>
+          <div class="demo-buttons">
+            <button class="btn small" :disabled="clockBusy" @click="setClock((clockInfo?.offset_days || 0) + 1)">+1 day</button>
+            <button class="btn small" :disabled="clockBusy" @click="setClock((clockInfo?.offset_days || 0) + 7)">+7 days</button>
+          </div>
+        </div>
+
+        <section class="chase" aria-labelledby="chase-title">
+          <div class="chase-head">
+            <div>
+              <h2 id="chase-title">Chase Agent</h2>
+              <p class="chase-mode" x-text="chaseLine()"></p>
+            </div>
+            <button class="btn small" :disabled="chaseRunning" @click="runChase()"
+                    x-text="chaseRunning ? 'Checking…' : 'Run'"></button>
+          </div>
+          <template x-for="r in reminders" :key="r.id">
+            <article class="reminder">
+              <header>
+                <span class="tone" :class="r.tone" x-text="r.tone"></span>
+                <b x-text="r.client"></b>
+                <span class="muted" x-text="`· ${r.balance} · ${r.days_overdue}d overdue`"></span>
+              </header>
+              <p class="reminder-note" x-show="editingReminder !== r.id" x-text="r.note"></p>
+              <textarea class="control" rows="4" x-show="editingReminder === r.id" x-model="reminderText" maxlength="1000"
+                        :aria-label="`Reminder to ${r.client}`"></textarea>
+              <p class="reminder-meta">
+                <span x-show="r.tool_calls.length" class="checked">✓ Checked with PayPal</span>
+                <span x-show="r.source === 'template'">Standard wording (agent unavailable)</span>
+                <span x-text="`Invoice ${r.number}`"></span>
+              </p>
+              <div class="reminder-actions">
+                <button class="btn primary small" :disabled="chaseBusy === r.id" @click="sendReminder(r)"
+                        x-text="chaseBusy === r.id ? 'Sending…' : 'Send'"></button>
+                <button class="btn small" x-show="editingReminder !== r.id" @click="editingReminder = r.id; reminderText = r.note">Edit</button>
+                <button class="btn small" x-show="editingReminder === r.id" @click="editingReminder = null">Done</button>
+                <button class="btn ghost small" :disabled="chaseBusy === r.id" @click="skipReminder(r)">Skip</button>
+              </div>
+            </article>
+          </template>
+          <p class="error" role="alert" x-show="chaseError" x-text="chaseError"></p>
+        </section>
 
         <div class="segmented tabs" role="tablist" aria-label="Show">
           <template x-for="t in ['quotes', 'owed', 'overdue', 'paid']" :key="t">
@@ -524,6 +582,18 @@
           </div>
         </template>
 
+        <template x-if="detail.kind === 'invoice' && detail.plan && detail.plan.length">
+          <div>
+            <h2 class="group-title">Payment plan</h2>
+            <ul class="work-list plan-rows">
+              <template x-for="row in detail.plan"><li :class="row.status">
+                <span x-text="`${row.due} · ${ { paid: 'paid', late: 'late', upcoming: 'upcoming' }[row.status] }`"></span>
+                <span x-text="row.amount"></span></li></template>
+            </ul>
+          </div>
+        </template>
+        <button class="btn ghost" x-show="detail.kind === 'invoice' && detail.plan_url" @click="copyText(detail.plan_url)">Copy “propose a plan” link</button>
+
         <h2 class="group-title">Work</h2>
         <ul class="work-list">
           <template x-for="i in detail.items"><li><span x-text="i.name"></span><span x-text="i.amount"></span></li></template>
@@ -596,6 +666,9 @@
         <blockquote class="asked" x-text="`“${approval.client_text}”`"></blockquote>
         <p class="sheet-summary" x-text="approval.summary"></p>
         <p class="sheet-note" x-show="newWork()">This adds work that needs your price. Reply, or send a counter-offer.</p>
+        <p class="plan-ask" x-show="approval.kind === 'plan' && approval.plan_text">
+          <span>Plan asked for</span><b x-text="approval.plan_text"></b>
+        </p>
         <div class="compare" x-show="approval.priced && !newWork()">
           <div><span>Quoted</span><b x-text="money(toCents(approval.quote_total), approval.currency)"></b></div>
           <div class="arrow" aria-hidden="true">→</div>
@@ -627,9 +700,9 @@
 
         <p class="error" role="alert" x-show="approvalError" x-text="approvalError"></p>
         <div class="sheet-actions" x-show="!countering && !replying">
-          <button class="btn primary" x-show="approval.priced && approval.violations.length && !newWork()" :disabled="deciding" @click="decide('approve')">Approve</button>
+          <button class="btn primary" x-show="(approval.kind === 'plan' ? approval.has_offer : approval.priced && approval.violations.length) && !newWork()" :disabled="deciding" @click="decide('approve')">Approve</button>
           <button class="btn" :class="{ primary: !approval.violations.length || newWork() }" :disabled="deciding" @click="replying = true; counter.note = ''">Reply</button>
-          <button class="btn" :disabled="deciding" @click="startCounter()">Counter-offer</button>
+          <button class="btn" x-show="approval.kind !== 'plan'" :disabled="deciding" @click="startCounter()">Counter-offer</button>
           <button class="btn ghost danger" :disabled="deciding" @click="decide('decline')">Decline</button>
         </div>
         <div class="sheet-actions" x-show="replying">

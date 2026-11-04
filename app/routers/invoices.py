@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
-from datetime import UTC, datetime, timedelta
+from datetime import timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
@@ -14,7 +14,7 @@ from app.db import get_session, get_sessionmaker
 from app.models import Workspace
 from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.schemas.invoice import InvoiceIn, InvoiceOut
-from app.services import invoicing, payments
+from app.services import clock, invoicing, payments
 from app.services.live import broker
 from app.settings import Settings, get_settings
 
@@ -35,8 +35,7 @@ async def send_invoice(
     ws: Workspace = Depends(current_workspace),
     paypal: PayPalClient = Depends(get_paypal),
 ) -> InvoiceOut | JSONResponse:
-    # Server-side "today" in UTC; a day either way only matters for a past-due check.
-    today = datetime.now(UTC).date()
+    today = clock.today_for(ws)  # the demo clock, if moved
     if data.due_date is not None and data.due_date < today - timedelta(days=1):
         raise HTTPException(422, "The due date is in the past.")
     try:

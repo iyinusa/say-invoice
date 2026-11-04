@@ -18,7 +18,9 @@ from app.models import Event, Invoice, Workspace
 from app.models.base import utcnow
 from app.money import display
 from app.services import invoicing, payments
+from app.services.clock import real_today
 from app.services.money_view import OPEN, balance
+from app.services.plan_links import plan_line
 
 log = get_logger("invoice_actions")
 
@@ -66,22 +68,30 @@ def default_reminder(inv: Invoice, ws: Workspace) -> str:
 async def remind(
     session: AsyncSession, paypal: PayPalActions, ws: Workspace, inv: Invoice,
     *, note: str = "", by: str = "owner", gap: timedelta = MANUAL_REMINDER_GAP,
+    subject: str = "", extra: dict[str, Any] | None = None, now: datetime | None = None,
 ) -> Event:  # fmt: skip
     if inv.status not in OPEN or not inv.paypal_invoice_id:
         raise ActionRefused("only an unpaid, sent invoice can be reminded")
     last = await last_reminder(session, inv)
-    if last is not None and (since := utcnow() - aware(last.created_at)) < gap:
+    now = now or utcnow()  # the demo clock's "now" when it has been moved
+    if last is not None and (since := now - aware(last.created_at)) < gap:
         hours = int(since.total_seconds() // 3600)
         when = f"{hours} hour{'s' if hours != 1 else ''}" if hours else "less than an hour"
         raise ActionRefused(f"a reminder went out {when} ago")
-    text = (note or default_reminder(inv, ws)).strip()[:1000]
+    text = (note or default_reminder(inv, ws)).strip()
+    if not inv.plan and inv.kind != "deposit" and "/p/" not in text:
+        text = f"{text}\n\n{plan_line(inv)}"  # every reminder offers a plan until one is agreed
+    text = text[:1000]
     await paypal.remind(
         inv.paypal_invoice_id,
-        subject=f"Reminder: invoice {inv.number} from {ws.business_name}",
+        subject=subject or f"Reminder: invoice {inv.number} from {ws.business_name}",
         note=text,
     )
     ev = Event(
-        workspace_id=ws.id, invoice_id=inv.id, kind="reminder_sent", data={"by": by, "note": text}
+        workspace_id=ws.id,
+        invoice_id=inv.id,
+        kind="reminder_sent",
+        data={"by": by, "note": text, **(extra or {})},
     )
     session.add(ev)
     await session.commit()
@@ -104,7 +114,7 @@ async def record_payment(
                             f"and {display(owed, inv.currency)}")  # fmt: skip
     await paypal.record_payment(
         inv.paypal_invoice_id, amount=amount, currency=inv.currency, method=method,
-        paid_on=today, note=note,
+        paid_on=real_today(), note=note,  # PayPal gets the real date, whatever the demo clock says
     )  # fmt: skip
     session.add(Event(workspace_id=ws.id, invoice_id=inv.id, kind="payment_recorded",
                       data={"method": method, "amount": str(amount)}))  # fmt: skip

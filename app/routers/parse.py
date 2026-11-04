@@ -16,7 +16,10 @@ from pydantic import ValidationError
 
 from app.agents.parser import JobParser, ParserUnavailable, get_job_parser
 from app.logging_config import get_logger
+from app.models import Workspace
+from app.routers.invoices import current_workspace
 from app.schemas.job import ParsedJob, ParseResult
+from app.services import clock
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api", tags=["parse"])
@@ -53,6 +56,7 @@ async def parse_job(
     tz: str = Form("", description="IANA time zone from the browser, e.g. Europe/London."),
     settings: Settings = Depends(get_settings),
     parser: JobParser = Depends(get_job_parser),
+    ws: Workspace = Depends(current_workspace),
 ) -> ParseResult:
     if len(text) > MAX_TEXT_CHARS:
         raise HTTPException(413, f"keep it under {MAX_TEXT_CHARS} characters")
@@ -79,7 +83,7 @@ async def parse_job(
 
     try:
         result = await parser.parse(
-            today=_today(tz),
+            today=_today(tz) + clock.offset(ws),  # "due Friday" counts from the demo clock
             default_currency=settings.default_currency,
             text=text,
             audio=audio_bytes,

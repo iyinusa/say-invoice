@@ -68,6 +68,9 @@ class Settings(BaseSettings):
     # Gemini takes inline audio up to ~20 MB per request; a spoken job is far smaller.
     max_audio_bytes: int = 10 * 1024 * 1024
 
+    # The "simulate N days later" control for demos. Turn off for a real business.
+    demo_clock_enabled: bool = True
+
     # Seconds between reconcile passes (re-check open invoices with PayPal). 0 turns it off.
     reconcile_interval_s: float = 60.0
 

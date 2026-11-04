@@ -39,6 +39,10 @@ class Workspace(IdMixin, Base):
     currency: Mapped[str] = mapped_column(String(3), default="GBP")
     default_due_days: Mapped[int] = mapped_column(Integer, default=7)
     language: Mapped[str] = mapped_column(String(16), default="en")
+    # False (the default): the Chase Agent drafts reminders and the owner approves each one.
+    auto_chase: Mapped[bool] = mapped_column(Boolean, default=False)
+    # Demo clock: the app behaves as if this many days have passed. Never touches PayPal's dates.
+    clock_offset_days: Mapped[int] = mapped_column(Integer, default=0)
 
 
 class DealPolicy(IdMixin, Base):
@@ -125,7 +129,10 @@ class DealMessage(IdMixin, Base):
     __tablename__ = "deal_message"
 
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id"), index=True)
-    quote_id: Mapped[str] = mapped_column(ForeignKey("quote.id"), index=True)
+    # A quote negotiation, or (kind "plan") a payment-plan request on an invoice.
+    kind: Mapped[str] = mapped_column(String(10), default="quote")
+    quote_id: Mapped[str | None] = mapped_column(ForeignKey("quote.id"), index=True)
+    invoice_id: Mapped[str | None] = mapped_column(ForeignKey("invoice.id"), index=True)
     role: Mapped[str] = mapped_column(String(10))  # client | agent | owner
     text: Mapped[str] = mapped_column(Text)
     # none | open (client may accept) | escalated (waiting for the owner) |
@@ -175,6 +182,10 @@ class Invoice(IdMixin, Base):
     due_date: Mapped[date | None] = mapped_column(Date)
     note: Mapped[str] = mapped_column(Text, default="")
     payer_view_url: Mapped[str] = mapped_column(String(500), default="")
+    # The client's link to /p/{token}: "Can't pay in full? Propose a plan."
+    public_token: Mapped[str | None] = mapped_column(String(40), unique=True)
+    # An agreed payment plan: {"instalments": [{"due": iso, "amount": str}], "agreed_at": iso}
+    plan: Mapped[dict[str, Any] | None] = mapped_column(JSON)
     qr_png: Mapped[bytes | None] = mapped_column(LargeBinary, deferred=True)
     transcript: Mapped[str] = mapped_column(Text, default="")
     raw_ai_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
@@ -200,6 +211,24 @@ class LineItem(IdMixin, Base):
     unit_amount: Mapped[Decimal] = mapped_column(Money)
     unit: Mapped[str] = mapped_column(String(10), default="items")  # hours|items|fixed
     is_material: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
+class Reminder(IdMixin, Base):
+    """One rung of the Chase Agent's ladder for one invoice: drafted, then sent or skipped."""
+
+    __tablename__ = "reminder"
+
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id"), index=True)
+    invoice_id: Mapped[str] = mapped_column(ForeignKey("invoice.id"), index=True)
+    step: Mapped[int] = mapped_column(Integer)  # 1 friendly · 2 firm · 3 final
+    status: Mapped[str] = mapped_column(String(10), default="pending")  # pending|sent|skipped
+    subject: Mapped[str] = mapped_column(String(200), default="")
+    note: Mapped[str] = mapped_column(Text, default="")
+    # agent (ADK + PayPal MCP tools) or template (the fallback when the agent can't run)
+    source: Mapped[str] = mapped_column(String(10), default="agent")
+    # What the agent looked up: tool calls and PayPal's status, for the timeline and judges.
+    trace: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    decided_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
 
 
 class Event(IdMixin, Base):

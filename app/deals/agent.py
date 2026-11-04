@@ -176,6 +176,53 @@ async def call_with_retry(model: DealModel, system: str, conversation: str) -> A
     raise DealAgentUnavailable("the deal agent couldn't answer just now") from last
 
 
+def gemini_json_model(
+    settings: Settings, cls: type[BaseModel]
+) -> Callable[[str, str], Awaitable[Any]]:
+    """A structured Gemini call returning `cls`; the Deal Agent and the plan agent share it."""
+    settings.apply_google_env()
+    client = genai.Client()
+    level = settings.gemini_thinking_level.strip().upper()
+    thinking = types.ThinkingConfig(thinking_level=types.ThinkingLevel(level)) if level else None
+    schema = _all_required(cls.model_json_schema())
+
+    async def model(system: str, conversation: str) -> Any:
+        resp = await asyncio.wait_for(
+            client.aio.models.generate_content(
+                model=settings.gemini_model,
+                contents=conversation,
+                config=types.GenerateContentConfig(
+                    system_instruction=system,
+                    response_mime_type="application/json",
+                    response_json_schema=schema,
+                    temperature=0.3,
+                    thinking_config=thinking,
+                ),
+            ),
+            timeout=settings.parse_timeout_s,
+        )
+        return cls.model_validate_json(resp.text or "")
+
+    return model
+
+
+_plan_model: Any = None
+
+
+def get_plan_model() -> Any:
+    """The payment-plan agent's model. FastAPI dependency; overridden in tests."""
+    global _plan_model
+    if _plan_model is None:
+        from app.agents.parser import ParserNotConfigured
+        from app.deals.plans import PlanTurn
+
+        settings = get_settings()
+        if not settings.gemini_configured:
+            raise ParserNotConfigured("set SI_GOOGLE_API_KEY or SI_VERTEX_PROJECT")
+        _plan_model = gemini_json_model(settings, PlanTurn)
+    return _plan_model
+
+
 def gemini_deal_model(settings: Settings) -> DealModel:
     settings.apply_google_env()
     client = genai.Client()

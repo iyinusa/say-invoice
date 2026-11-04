@@ -87,6 +87,20 @@ window.sayInvoice = () => ({
   payOpen: false,
   pay: { amount: "", method: "CASH" },
 
+  // demo clock
+  clockInfo: null,
+  clockBusy: false,
+
+  // chase agent
+  reminders: [],
+  chaseRunning: false,
+  chaseSummary: null,
+  chaseBusy: null,
+  chaseError: "",
+  editingReminder: null,
+  reminderText: "",
+  autoChase: false,
+
   // approvals (Deal Agent escalations)
   approvals: [],
   countering: false,
@@ -103,6 +117,109 @@ window.sayInvoice = () => ({
     this.loadApprovals();
     this.loadJobs();
     this.loadHome();
+    this.loadReminders();
+    this.loadClock();
+  },
+
+  // ── demo clock ────────────────────────────────────────────────────────
+  async loadClock() {
+    try {
+      const resp = await fetch("/api/clock");
+      if (resp.ok) this.clockInfo = await resp.json();
+    } catch {
+      /* no clock: real time */
+    }
+  },
+  async setClock(days) {
+    this.clockBusy = true;
+    try {
+      const resp = await fetch("/api/clock", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ offset_days: Math.max(0, Math.min(120, days)) }),
+      });
+      if (resp.ok) this.clockInfo = await resp.json();
+      // Overdue, the Chase Agent and job pages all follow the clock.
+      await Promise.all([this.loadHome(), this.loadReminders(), this.loadJobs()]);
+      if (this.screen === "detail") await this.refreshDetail();
+    } finally {
+      this.clockBusy = false;
+    }
+  },
+
+  // ── chase agent ───────────────────────────────────────────────────────
+  async loadReminders() {
+    try {
+      const resp = await fetch("/api/reminders");
+      if (resp.ok) this.reminders = await resp.json();
+    } catch {
+      /* next refresh */
+    }
+  },
+  chaseLine() {
+    const s = this.chaseSummary;
+    const n = this.reminders.length;
+    if (n) return `${n} reminder${n === 1 ? "" : "s"} waiting for your OK`;
+    if (s) {
+      if (!s.due) return "Checked just now: nobody needs a reminder yet.";
+      return s.auto ? `Sent ${s.sent} reminder${s.sent === 1 ? "" : "s"} just now.` : "Drafts ready below.";
+    }
+    return "Checks overdue invoices every hour: friendly, then firm, then final.";
+  },
+  async runChase() {
+    this.chaseRunning = true;
+    this.chaseError = "";
+    try {
+      const resp = await fetch("/api/chase/run", { method: "POST" });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.chaseError = errorText(body, "The Chase Agent couldn't run just now.");
+        return;
+      }
+      this.chaseSummary = body;
+      await Promise.all([this.loadReminders(), this.loadHome()]);
+    } catch {
+      this.chaseError = "No connection. Try again.";
+    } finally {
+      this.chaseRunning = false;
+    }
+  },
+  async sendReminder(r) {
+    this.chaseBusy = r.id;
+    this.chaseError = "";
+    const edited = this.editingReminder === r.id ? this.reminderText : null;
+    try {
+      const resp = await fetch(`/api/reminders/${r.id}/send`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(edited !== null ? { note: edited } : {}),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) this.chaseError = errorText(body, "Couldn't send it. Try again.");
+      this.editingReminder = null;
+      await Promise.all([this.loadReminders(), this.loadHome()]);
+    } catch {
+      this.chaseError = "No connection. Try again.";
+    } finally {
+      this.chaseBusy = null;
+    }
+  },
+  async skipReminder(r) {
+    this.chaseBusy = r.id;
+    try {
+      await fetch(`/api/reminders/${r.id}/skip`, { method: "POST" });
+      await this.loadReminders();
+    } finally {
+      this.chaseBusy = null;
+    }
+  },
+  async saveChase() {
+    try {
+      const resp = await fetch("/api/chase/settings", {
+        method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ auto_chase: this.autoChase }),
+      });
+      if (!resp.ok) throw new Error();
+    } catch {
+      this.autoChase = !this.autoChase;
+    }
   },
 
   // ── who owes me ───────────────────────────────────────────────────────
@@ -117,6 +234,7 @@ window.sayInvoice = () => ({
   async openMoney() {
     this.screen = "money";
     this.actionMsg = "";
+    this.loadReminders();
     await this.loadHome();
     if (this.home && this.tab === "owed" && !this.home.tabs.owed.length && this.home.tabs.overdue.length) this.tab = "overdue";
   },
@@ -370,7 +488,10 @@ window.sayInvoice = () => ({
       if (String(this.counter.deposit).trim() !== "") body.deposit_pct = dep.toFixed(2);
     }
     try {
-      const resp = await fetch(`/api/quotes/${a.quote_id}/messages/${a.message_id}/decision`, {
+      const url = a.kind === "plan"
+        ? `/api/invoices/${a.invoice_id}/plan-messages/${a.message_id}/decision`
+        : `/api/quotes/${a.quote_id}/messages/${a.message_id}/decision`;
+      const resp = await fetch(url, {
         method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
       });
       const out = await resp.json().catch(() => ({}));
@@ -397,6 +518,7 @@ window.sayInvoice = () => ({
     source.addEventListener("invoice", (e) => this.onInvoice(JSON.parse(e.data)));
     source.addEventListener("quote", (e) => this.onQuote(JSON.parse(e.data)));
     source.addEventListener("approval", (e) => this.onApproval(JSON.parse(e.data)));
+    source.addEventListener("reminder", () => this.loadReminders());
   },
 
   onInvoice(update) {
@@ -910,9 +1032,10 @@ window.sayInvoice = () => ({
     this.saved = false;
     this.screen = "settings";
     try {
-      const resp = await fetch("/api/policy");
+      const [resp, chaseResp] = await Promise.all([fetch("/api/policy"), fetch("/api/chase/settings")]);
       if (!resp.ok) throw new Error();
       this.policy = await resp.json();
+      if (chaseResp.ok) this.autoChase = (await chaseResp.json()).auto_chase;
       for (const k of ["max_discount_pct", "floor_pct", "min_deposit_pct"]) this.policy[k] = Number(this.policy[k]);
     } catch {
       this.error = "Couldn't load your rules. Check your signal and try again.";

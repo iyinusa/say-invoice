@@ -87,3 +87,20 @@
 .waiting .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: blink 1.6s ease-in-out infinite; }
 @keyframes blink { 50% { opacity: 0.3; } }
 .composer { display: flex; gap: 8px; }
+
+/* ── payment plan schedule ──────────────────────────────── */
+.schedule { list-style: none; margin: 0 0 14px; padding: 0; display: grid; gap: 8px; }
+.schedule li {
+  display: grid; grid-template-columns: 28px 1fr auto; grid-template-areas: "dot date amount" "dot status amount";
+  align-items: center; column-gap: 12px; padding: 10px 12px; border: 1px solid var(--line); border-radius: 12px;
+}
+.schedule.compact li { grid-template-areas: "dot date amount"; padding: 6px 0; border: 0; }
+.sch-dot { grid-area: dot; width: 28px; height: 28px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--surface-2); border: 1px solid var(--line-strong); font-size: 13px; font-weight: 800; color: var(--ink-2); }
+.sch-date { grid-area: date; font-weight: 600; }
+.sch-amount { grid-area: amount; font-weight: 700; font-variant-numeric: tabular-nums; }
+.sch-status { grid-area: status; font-size: 13px; color: var(--muted); }
+.schedule li.paid { background: var(--brand-soft); border-color: var(--brand); }
+.schedule li.paid .sch-dot { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.schedule li.late { border-color: var(--flag-line); background: var(--flag-soft); }
+.schedule li.late .sch-status { color: var(--flag); font-weight: 700; }

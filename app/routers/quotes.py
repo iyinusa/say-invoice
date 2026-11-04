@@ -7,7 +7,7 @@ credential, and they only ever show or change that one quote.
 from __future__ import annotations
 
 import time
-from datetime import UTC, datetime
+from datetime import date
 from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
@@ -32,7 +32,7 @@ from app.schemas.quote import (
     QuoteIn,
     QuoteOut,
 )
-from app.services import final, invoicing, payments, quotes
+from app.services import clock, final, invoicing, payments, quotes
 from app.services import policy as policies
 from app.settings import Settings, get_settings
 
@@ -44,8 +44,10 @@ _last_refresh: dict[str, float] = {}
 REFRESH_EVERY_S = 5.0
 
 
-def _today() -> datetime:
-    return datetime.now(UTC)
+async def _today_of(session: AsyncSession, workspace_id: str) -> date:
+    """The quote's workspace clock (the demo clock, if it has been moved)."""
+    ws = await session.get(Workspace, workspace_id)
+    return clock.today_for(ws)
 
 
 # ── owner ────────────────────────────────────────────────────────────────────
@@ -58,7 +60,7 @@ async def create_quote(
     ws: Workspace = Depends(current_workspace),
     settings: Settings = Depends(get_settings),
 ) -> QuoteOut:
-    today = _today().date()
+    today = clock.today_for(ws)
     if data.job_date is not None and data.job_date < today:
         raise HTTPException(422, "The job date is in the past.")
     policy = await policies.get_policy(session, ws)
@@ -114,7 +116,7 @@ async def owner_decision(
     try:
         reply = await negotiator.owner_decision(
             session, q, message_id, data.action,  # type: ignore[arg-type]
-            today=_today().date(), labour_discount_pct=data.labour_discount_pct,
+            today=clock.today_for(ws), labour_discount_pct=data.labour_discount_pct,
             deposit_pct=data.deposit_pct, note=data.note,
         )  # fmt: skip
     except negotiator.OfferUnavailable as exc:
@@ -134,7 +136,7 @@ async def send_final_invoice(
     q = await quotes.get_quote(session, ws, quote_id)
     if q is None:
         raise HTTPException(404, "quote not found")
-    today = _today().date()
+    today = clock.today_for(ws)
     if data.due_date is not None and data.due_date < today:
         raise HTTPException(422, "The due date is in the past.")
     try:
@@ -173,13 +175,34 @@ async def pending_approvals(
     session: AsyncSession = Depends(get_session), ws: Workspace = Depends(current_workspace)
 ) -> list[dict[str, object]]:
     """Requests waiting for the owner, for when the app opens (live ones arrive over SSE)."""
+    from app.deals import plans
+    from app.models import Invoice
+
+    out = []
+    # Payment-plan requests: invoices rather than quotes.
+    for msg in await session.scalars(
+        select(DealMessage)
+        .where(DealMessage.workspace_id == ws.id, DealMessage.offer_status == "escalated",
+               DealMessage.kind == "plan")
+        .order_by(DealMessage.created_at)
+    ):  # fmt: skip
+        inv = await session.get(Invoice, msg.invoice_id)
+        if inv is None:
+            continue
+        client_text = await session.scalar(
+            select(DealMessage.text)
+            .where(DealMessage.invoice_id == inv.id, DealMessage.role == "client",
+                   DealMessage.created_at <= msg.created_at)
+            .order_by(DealMessage.created_at.desc())
+            .limit(1)
+        )  # fmt: skip
+        out.append(plans.approval_event(inv, msg, client_text or ""))
     rows = await session.execute(
         select(DealMessage, Quote)
         .join(Quote, Quote.id == DealMessage.quote_id)
         .where(DealMessage.workspace_id == ws.id, DealMessage.offer_status == "escalated")
         .order_by(DealMessage.created_at)
     )
-    out = []
     for msg, q in rows.all():
         client_text = await session.scalar(
             select(DealMessage.text)
@@ -246,7 +269,8 @@ async def post_client_message(
 ) -> dict[str, object]:
     q = await _quote_or_404(token, session)
     try:
-        await negotiator.client_message(session, model, q, data.text, today=_today().date())
+        today = await _today_of(session, q.workspace_id)
+        await negotiator.client_message(session, model, q, data.text, today=today)
     except negotiator.NegotiationClosed as exc:
         raise HTTPException(409, str(exc).capitalize() + ".") from exc
     except negotiator.TooManyMessages as exc:
@@ -267,7 +291,7 @@ async def accept_offer(
 ) -> dict[str, object]:
     """Accept a negotiated offer: the quote becomes the next version, then the deposit."""
     q = await _quote_or_404(token, session)
-    today = _today().date()
+    today = await _today_of(session, q.workspace_id)
     if not data.email and not q.client_email:
         raise HTTPException(422, "Add your email so PayPal can send the deposit request.")
     try:
@@ -291,7 +315,9 @@ async def _status(session: AsyncSession, q: Quote, settings: Settings) -> dict[s
     out = quotes.to_out(q, await quotes.deposit_invoice(session, q), settings.public_base_url)
     deposit = out.deposit
     return {
-        "status": "expired" if quotes.is_expired(q, _today().date()) else q.status,
+        "status": "expired"
+        if quotes.is_expired(q, await _today_of(session, q.workspace_id))
+        else q.status,
         "email": q.client_email,
         "deposit_required": out.deposit_amount > 0,
         "deposit_amount": display(out.deposit_amount, q.currency),
@@ -388,7 +414,9 @@ async def accept_quote(
 ) -> dict[str, object]:
     q = await _quote_or_404(token, session)
     try:
-        await quotes.accept(session, paypal, q, data, today=_today().date())
+        await quotes.accept(
+            session, paypal, q, data, today=await _today_of(session, q.workspace_id)
+        )
     except quotes.QuoteClosed as exc:
         raise HTTPException(409, str(exc).capitalize() + ".") from exc
     except quotes.EmailNeeded as exc:
