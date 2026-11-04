@@ -8,9 +8,94 @@ window.quotePage = () => ({
   busy: false,
   error: "",
   timer: null,
+  messages: [],
+  draft: "",
+  sending: false,
+  chatError: "",
+  chatTimer: null,
+  owner: window.QUOTE.owner,
 
   init() {
     if (this.depositDue()) this.poll();
+    if (["sent", "negotiating", "awaiting_owner"].includes(this.state.status)) this.loadMessages();
+  },
+
+  // ── ask for a change ──────────────────────────────────────────────────
+  speaker(m) {
+    if (m.role === "client") return "You";
+    if (m.role === "owner") return this.owner;
+    return `${window.QUOTE.business} assistant`;
+  },
+  openOffer() {
+    return this.messages.some((m) => m.offer_status === "open");
+  },
+  async loadMessages() {
+    try {
+      const resp = await fetch(`/q/${this.token}/messages`);
+      if (resp.ok) this.applyConversation(await resp.json());
+    } catch {
+      /* the next poll will catch up */
+    }
+  },
+  applyConversation(body) {
+    this.messages = body.messages;
+    if (body.status && this.state.status !== body.status && body.status !== "accepted") this.state.status = body.status;
+    clearInterval(this.chatTimer);
+    if (this.state.status === "awaiting_owner") this.chatTimer = setInterval(() => this.loadMessages(), 5000);
+  },
+  async send() {
+    const text = this.draft.trim();
+    if (!text || this.sending) return;
+    this.sending = true;
+    this.chatError = "";
+    // Show it straight away; the server's list replaces it.
+    this.messages = [...this.messages, { id: `tmp-${Date.now()}`, role: "client", text, offer: null, offer_status: "none" }];
+    this.draft = "";
+    try {
+      const resp = await fetch(`/q/${this.token}/messages`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ text }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.messages = this.messages.filter((m) => !String(m.id).startsWith("tmp-"));
+        this.draft = text;
+        this.chatError = typeof body.detail === "string" ? body.detail : "Couldn't send that. Try again.";
+        return;
+      }
+      this.applyConversation(body);
+    } catch {
+      this.messages = this.messages.filter((m) => !String(m.id).startsWith("tmp-"));
+      this.draft = text;
+      this.chatError = "No connection. Try again.";
+    } finally {
+      this.sending = false;
+    }
+  },
+  async acceptOffer(m) {
+    if (!this.email && !window.QUOTE.initial.email) {
+      this.chatError = "Add your email in the box below first, so PayPal can send the deposit request.";
+      document.getElementById("email")?.focus();
+      return;
+    }
+    this.busy = true;
+    this.chatError = "";
+    try {
+      const resp = await fetch(`/q/${this.token}/offers/${m.id}/accept`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ email: this.email || "" }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.chatError = typeof body.detail === "string" ? body.detail : "Couldn't accept it just now.";
+        await this.loadMessages();
+        return;
+      }
+      // The quote itself changed (new version): reload so every figure on the page matches.
+      window.location.reload();
+    } catch {
+      this.chatError = "No connection. Try again; you won't be charged twice.";
+    } finally {
+      this.busy = false;
+    }
   },
 
   depositDue() {
@@ -25,6 +110,7 @@ window.quotePage = () => ({
     if (s === "accepted") return this.depositDue() ? "Accepted" : "Booked";
     if (s === "expired") return "Expired";
     if (s === "declined") return "Closed";
+    if (s === "awaiting_owner") return `With ${this.owner}`;
     return "Awaiting your reply";
   },
   pillClass() {

@@ -54,3 +54,36 @@
 .booked p { margin: 4px 0; }
 
 .doc-foot { margin: 28px 0 8px; text-align: center; font-size: 13px; color: var(--muted); }
+
+/* ── ask for a change ───────────────────────────────────── */
+.chat { margin-top: 16px; padding: 20px 16px; }
+.chat h2 { margin: 0 0 6px; font-size: 20px; letter-spacing: -0.01em; }
+.chat-intro { margin: 0 0 14px; }
+.thread { list-style: none; margin: 12px 0 14px; padding: 0; display: grid; gap: 12px; }
+.msg { display: grid; gap: 4px; max-width: 88%; }
+.msg.client { justify-self: end; justify-items: end; }
+.who { font-size: 12px; font-weight: 700; color: var(--muted); }
+.bubble { margin: 0; padding: 10px 14px; border-radius: 16px; line-height: 1.4; white-space: pre-wrap; overflow-wrap: anywhere; }
+.msg.client .bubble { background: var(--brand); color: var(--brand-ink); border-bottom-right-radius: 4px; }
+.msg.agent .bubble, .msg.owner .bubble { background: var(--surface-2); border: 1px solid var(--line); border-bottom-left-radius: 4px; }
+.msg.owner .bubble { border-color: var(--brand); }
+
+.offer { width: 100%; min-width: 240px; border: 1px solid var(--brand); border-radius: 14px; padding: 12px; background: var(--surface); display: grid; gap: 8px; }
+.offer.superseded { border-color: var(--line); opacity: 0.6; }
+.offer.accepted { border-color: var(--brand); }
+.offer-lines { list-style: none; margin: 0; padding: 0; display: grid; gap: 4px; font-size: 14px; }
+.offer-lines li { display: flex; justify-content: space-between; gap: 12px; color: var(--ink-2); }
+.offer-lines li span:last-child { font-variant-numeric: tabular-nums; }
+.offer-lines .minus { color: var(--brand); font-weight: 600; }
+.offer-removed, .offer-date, .offer-deposit, .offer-note { margin: 0; font-size: 14px; color: var(--muted); }
+.offer-total { display: flex; justify-content: space-between; align-items: baseline; border-top: 1px solid var(--line); padding-top: 8px; }
+.offer-total b { font-size: 22px; font-variant-numeric: tabular-nums; }
+.offer .btn { margin-top: 4px; }
+
+.waiting {
+  display: flex; gap: 10px; align-items: center; margin: 0 0 8px; padding: 12px 14px; border-radius: 12px;
+  background: var(--flag-soft); color: var(--flag); font-weight: 600; font-size: 15px;
+}
+.waiting .dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: blink 1.6s ease-in-out infinite; }
+@keyframes blink { 50% { opacity: 0.3; } }
+.composer { display: flex; gap: 8px; }

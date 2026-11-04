@@ -120,9 +120,11 @@ Examples (said -> key fields):
 """
 
 FOLLOW_UP_PROMPT = """\
-The tradesperson is answering a question about the draft below. Return the
-complete updated draft: apply what they say now (an answer or a correction) and
-keep every other field as it is. `transcript` holds only what they said now.
+The tradesperson is answering a question about the draft below, or saying what
+changed ("used a £45 cartridge instead of the parts", "took an extra hour",
+"didn't need the valve"). Return the complete updated draft: apply what they say
+now (an answer, a correction, a swapped, added or removed item) and keep every
+other field and item exactly as it is. `transcript` holds only what they said now.
 
 Current draft:
 {draft}

@@ -17,7 +17,16 @@ from sqlalchemy import func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.logging_config import get_logger
-from app.models import Client, DealPolicy, Event, Invoice, Quote, QuoteLine, Workspace
+from app.models import (
+    Client,
+    DealMessage,
+    DealPolicy,
+    Event,
+    Invoice,
+    Quote,
+    QuoteLine,
+    Workspace,
+)
 from app.models.base import utcnow
 from app.money import line_total, percent_of, plain, subtotal, to_money
 from app.schemas.invoice import InvoiceIn, InvoiceItemIn, InvoiceItemOut
@@ -41,6 +50,11 @@ class EmailNeeded(Exception):
 
 def deposit_amount(q: Quote) -> Decimal:
     return percent_of(q.total, q.deposit_pct, q.currency)
+
+
+def list_total(q: Quote) -> Decimal:
+    """The lines at full price; `q.total` is after any negotiated labour discount."""
+    return subtotal(((ln.quantity, ln.unit_amount) for ln in q.lines), q.currency)
 
 
 def public_url(q: Quote, base_url: str) -> str:
@@ -154,6 +168,9 @@ def snapshot(q: Quote) -> dict[str, Any]:
             }
             for ln in q.lines
         ],
+        "list_total": str(list_total(q)),
+        "labour_discount_pct": str(q.labour_discount_pct),
+        "discount_amount": str(list_total(q) - q.total),
         "total": str(q.total),
         "deposit_pct": str(q.deposit_pct),
         "deposit_amount": str(deposit_amount(q)),
@@ -198,6 +215,13 @@ async def accept(
         q.client_name = data.name or q.client_name
         q.status = "accepted"
         q.accepted_at = utcnow()
+        # Accepting closes the negotiation: no offer or owner request stays live.
+        for m in await session.scalars(
+            select(DealMessage).where(
+                DealMessage.quote_id == q.id, DealMessage.offer_status.in_(("open", "escalated"))
+            )
+        ):
+            m.offer_status = "superseded"
         q.agreed_terms = snapshot(q)
         session.add(
             Event(
@@ -265,6 +289,9 @@ def to_out(q: Quote, deposit: Invoice | None, base_url: str) -> QuoteOut:
             for ln in q.lines
         ],
         total=q.total,
+        list_total=list_total(q),
+        labour_discount_pct=q.labour_discount_pct,
+        discount_amount=list_total(q) - q.total,
         deposit_pct=q.deposit_pct,
         deposit_amount=deposit_amount(q),
         job_date=q.job_date,

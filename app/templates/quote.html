@@ -9,7 +9,7 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6b46'/%3E%3Cpath d='M16 19a3.5 3.5 0 0 0 3.5-3.5V9a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 16 19Zm6-4a6 6 0 0 1-12 0' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 21v4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/app.css?v={{ v }}">
   <link rel="stylesheet" href="/static/quote.css?v={{ v }}">
-  <script>window.QUOTE = {{ {"token": q.public_token, "initial": initial} | tojson }};</script>
+  <script>window.QUOTE = {{ {"token": q.public_token, "initial": initial, "business": business_name, "owner": owner} | tojson }};</script>
   <script defer src="/static/quote.js?v={{ v }}"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
 </head>
@@ -48,6 +48,7 @@
     </table>
 
     <dl class="summary">
+      {% if has_discount %}<div><dt>Discount ({{ discount_pct }}% off labour)</dt><dd>−{{ discount }}</dd></div>{% endif %}
       <div class="grand"><dt>Total</dt><dd>{{ total }}</dd></div>
       {% if has_deposit %}
       <div><dt>Deposit to book ({{ deposit_pct }}%)</dt><dd>{{ deposit }}</dd></div>
@@ -58,9 +59,52 @@
     {% if q.note %}<p class="said"><span>Note from {{ business_name }}</span>{{ q.note }}</p>{% endif %}
   </section>
 
+  <!-- Ask for a change: the Deal Agent, inside the owner's rules -->
+  <section class="card chat" x-show="['sent', 'negotiating', 'awaiting_owner'].includes(state.status)">
+    <h2>Ask for a change</h2>
+    <p class="muted chat-intro" x-show="!messages.length">A different price, leaving something out, another day?
+      Ask here and get an answer straight away.</p>
+    <ol class="thread" x-show="messages.length" aria-live="polite">
+      <template x-for="m in messages" :key="m.id">
+        <li class="msg" :class="m.role">
+          <span class="who" x-text="speaker(m)"></span>
+          <p class="bubble" x-text="m.text"></p>
+          <template x-if="m.offer">
+            <div class="offer" :class="m.offer_status">
+              <ul class="offer-lines">
+                <template x-for="ln in m.offer.lines"><li><span x-text="ln.name"></span><span x-text="ln.total"></span></li></template>
+                <li class="minus" x-show="m.offer.has_discount"><span x-text="`${m.offer.discount_pct}% off labour`"></span><span x-text="`−${m.offer.discount}`"></span></li>
+              </ul>
+              <p class="offer-removed" x-show="m.offer.removed.length" x-text="`Without: ${m.offer.removed.join(', ')}`"></p>
+              <p class="offer-date" x-show="m.offer.job_date" x-text="`Job date: ${m.offer.job_date}`"></p>
+              <div class="offer-total"><span>New total</span><b x-text="m.offer.total"></b></div>
+              <p class="offer-deposit" x-show="m.offer.has_deposit" x-text="`Deposit to book: ${m.offer.deposit} (${m.offer.deposit_pct}%)`"></p>
+              <button class="btn primary" x-show="m.offer_status === 'open'" :disabled="busy" @click="acceptOffer(m)"
+                      x-text="busy ? 'Booking…' : (m.offer.has_deposit ? `Accept & pay ${m.offer.deposit} deposit` : 'Accept this offer')"></button>
+              <p class="offer-note" x-show="m.offer_status === 'superseded'">Replaced by a newer offer</p>
+            </div>
+          </template>
+        </li>
+      </template>
+    </ol>
+    <p class="waiting" x-show="state.status === 'awaiting_owner'" role="status">
+      <span class="dot" aria-hidden="true"></span><span x-text="`${owner} is looking at your request. This page updates when they reply.`"></span>
+    </p>
+    <form class="composer" @submit.prevent="send()" x-show="state.status !== 'awaiting_owner'">
+      <label for="ask" class="sr-only">Your message</label>
+      <div class="input-group grow">
+        <input id="ask" type="text" x-model="draft" maxlength="500" autocomplete="off"
+               placeholder="e.g. Could you do it for £100?" :disabled="sending">
+      </div>
+      <button class="btn primary compact" :disabled="sending || !draft.trim()" x-text="sending ? '…' : 'Send'"></button>
+    </form>
+    <p class="error" role="alert" x-show="chatError" x-text="chatError"></p>
+    <p class="fine">Answers come from {{ business_name }}'s assistant, within prices {{ owner }} has set.</p>
+  </section>
+
   <!-- Open: accept -->
   <section class="card action" x-show="state.status === 'sent' || state.status === 'negotiating'">
-    <h2>Happy with this?</h2>
+    <h2 x-text="openOffer() ? 'Or accept the original quote' : 'Happy with this?'"></h2>
     <form @submit.prevent="accept()">
       <div class="field">
         <label class="field-label" for="email">Your email</label>

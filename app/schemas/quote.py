@@ -66,6 +66,9 @@ class QuoteOut(BaseModel):
     currency: str
     items: list[InvoiceItemOut]
     total: Decimal
+    list_total: Decimal
+    labour_discount_pct: Decimal
+    discount_amount: Decimal
     deposit_pct: Decimal
     deposit_amount: Decimal
     job_date: date | None
@@ -75,6 +78,33 @@ class QuoteOut(BaseModel):
     created_at: datetime
     accepted_at: datetime | None
     deposit: DepositOut | None
+
+
+class ClientMessageIn(BaseModel):
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    text: str = Field(min_length=1, max_length=500)
+
+
+class DecisionIn(BaseModel):
+    action: str = Field(pattern="^(approve|decline|counter|reply)$")
+    labour_discount_pct: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
+    deposit_pct: Decimal | None = Field(default=None, ge=0, le=100, decimal_places=2)
+    note: str = Field(default="", max_length=500)
+
+
+class FinalIn(BaseModel):
+    """The finish-job card: the work as done. Currency and discounts come from the quote."""
+
+    model_config = ConfigDict(str_strip_whitespace=True)
+
+    client_name: str = Field(default="", max_length=120)
+    client_email: EmailStr
+    items: list[InvoiceItemIn] = Field(min_length=1, max_length=50)
+    due_date: date | None = None
+    notes: str = Field(default="", max_length=2000)
+    transcript: str = Field(default="", max_length=10_000)
+    draft: dict[str, Any] | None = None
 
 
 class AcceptIn(BaseModel):

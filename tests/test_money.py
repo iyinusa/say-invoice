@@ -36,3 +36,13 @@ def test_plain_never_uses_exponent_notation() -> None:
     assert str(plain(Decimal("100"))) == "100"
     assert str(plain(Decimal("1.50"))) == "1.5"
     assert str(plain(Decimal("0.25"))) == "0.25"
+
+
+def test_compact_for_stat_tiles() -> None:
+    from app.money import compact
+
+    assert compact(Decimal("96.5"), "GBP") == "£96.50"
+    assert compact(Decimal("1765"), "GBP") == "£1,765"
+    assert compact(Decimal("12900"), "GBP") == "£12.9K"
+    assert compact(Decimal("1000000"), "GBP") == "£1M"
+    assert compact(Decimal("2500"), "PLN") == "2,500 PLN"

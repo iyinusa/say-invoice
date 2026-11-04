@@ -98,6 +98,8 @@ class Quote(IdMixin, Base):
     currency: Mapped[str] = mapped_column(String(3))
     total: Mapped[Decimal] = mapped_column(Money)
     deposit_pct: Mapped[Decimal] = mapped_column(Money)
+    # Set when the client accepts a negotiated offer: % off the labour lines only.
+    labour_discount_pct: Mapped[Decimal] = mapped_column(Money, default=Decimal(0))
     job_date: Mapped[date | None] = mapped_column(Date)
     valid_until: Mapped[date] = mapped_column(Date)
     note: Mapped[str] = mapped_column(Text, default="")
@@ -110,6 +112,30 @@ class Quote(IdMixin, Base):
     lines: Mapped[list[QuoteLine]] = relationship(
         order_by="QuoteLine.position", cascade="all, delete-orphan", lazy="selectin"
     )
+
+
+class DealMessage(IdMixin, Base):
+    """One message in a quote's negotiation, with the offer it carries (if any).
+
+    `offer` is what the Deal Agent proposed (no prices); `priced` is PolicyGuard's
+    repricing of it; `violations` is why it was refused. Every message is kept,
+    so the job's timeline shows exactly how a price was reached.
+    """
+
+    __tablename__ = "deal_message"
+
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id"), index=True)
+    quote_id: Mapped[str] = mapped_column(ForeignKey("quote.id"), index=True)
+    role: Mapped[str] = mapped_column(String(10))  # client | agent | owner
+    text: Mapped[str] = mapped_column(Text)
+    # none | open (client may accept) | escalated (waiting for the owner) |
+    # approved | declined | countered | accepted | superseded
+    offer_status: Mapped[str] = mapped_column(String(12), default="none")
+    offer: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    priced: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    violations: Mapped[list[Any] | None] = mapped_column(JSON)
+    # One line for the owner's approval card.
+    owner_summary: Mapped[str] = mapped_column(String(500), default="")
 
 
 class QuoteLine(IdMixin, Base):
@@ -143,6 +169,8 @@ class Invoice(IdMixin, Base):
     number: Mapped[str] = mapped_column(String(40), default="")
     currency: Mapped[str] = mapped_column(String(3))
     total: Mapped[Decimal] = mapped_column(Money)
+    # Invoice-level deduction (a final invoice: agreed labour discount + deposit received).
+    discount: Mapped[Decimal] = mapped_column(Money, default=Decimal(0))
     amount_paid: Mapped[Decimal] = mapped_column(Money, default=Decimal(0))
     due_date: Mapped[date | None] = mapped_column(Date)
     note: Mapped[str] = mapped_column(Text, default="")

@@ -92,9 +92,12 @@ async def _client_for(session: AsyncSession, ws: Workspace, name: str, email: st
 # ── create + send ────────────────────────────────────────────────────────────
 
 
-def payload_hash(data: InvoiceIn) -> str:
+def payload_hash(data: InvoiceIn, discount: Decimal = Decimal(0)) -> str:
     """What makes two Send taps "the same invoice": everything the client will see."""
     content = data.model_dump(mode="json", exclude={"idempotency_key", "draft", "transcript"})
+    if discount:
+        # Only when there is one, so invoices without a discount hash as they always did.
+        content["_discount"] = str(discount)
     return hashlib.sha256(json.dumps(content, sort_keys=True).encode()).hexdigest()
 
 
@@ -104,14 +107,22 @@ def resolve_due_date(data: InvoiceIn, ws: Workspace, today: date) -> date | None
     return today + timedelta(days=ws.default_due_days) if ws.default_due_days > 0 else None
 
 
-def _fill(inv: Invoice, data: InvoiceIn, client: Client, ws: Workspace, today: date) -> None:
+def _fill(
+    inv: Invoice,
+    data: InvoiceIn,
+    client: Client,
+    ws: Workspace,
+    today: date,
+    discount: Decimal = Decimal(0),
+) -> None:
     inv.client = client
     inv.currency = data.currency
     inv.due_date = resolve_due_date(data, ws, today)
     inv.note = data.notes
     inv.transcript = data.transcript
     inv.raw_ai_json = data.draft
-    inv.payload_hash = payload_hash(data)
+    inv.payload_hash = payload_hash(data, discount)
+    inv.discount = discount
     inv.items = [
         LineItem(
             position=n,
@@ -124,7 +135,7 @@ def _fill(inv: Invoice, data: InvoiceIn, client: Client, ws: Workspace, today: d
         )
         for n, item in enumerate(data.items)
     ]
-    inv.total = subtotal(((i.quantity, i.unit_amount) for i in inv.items), data.currency)
+    inv.total = subtotal(((i.quantity, i.unit_amount) for i in inv.items), data.currency) - discount
 
 
 async def create_and_send(
@@ -136,6 +147,7 @@ async def create_and_send(
     today: date,
     kind: str = "standard",
     quote_id: str | None = None,
+    discount: Decimal = Decimal(0),
 ) -> Invoice:
     inv = await session.scalar(
         select(Invoice).where(
@@ -149,7 +161,7 @@ async def create_and_send(
         inv = Invoice(
             workspace_id=ws.id, idempotency_key=data.idempotency_key, kind=kind, quote_id=quote_id
         )
-        _fill(inv, data, client, ws, today)
+        _fill(inv, data, client, ws, today, discount)
         session.add(inv)
         await session.flush()
         session.add(
@@ -161,13 +173,13 @@ async def create_and_send(
             )
         )
         await session.commit()
-    elif inv.payload_hash != payload_hash(data):
+    elif inv.payload_hash != payload_hash(data, discount):
         if inv.paypal_invoice_id:
             raise InvoiceConflict("that invoice already exists at PayPal; start a new one")
         # Edited after a failed send, before PayPal ever saw it: replace the draft
         # (the old lines go with delete-orphan).
         client = await _client_for(session, ws, data.client_name, str(data.client_email))
-        _fill(inv, data, client, ws, today)
+        _fill(inv, data, client, ws, today, discount)
         await session.commit()
     return await push_to_paypal(session, paypal, ws, inv, today=today)
 
@@ -196,6 +208,7 @@ def to_paypal_draft(inv: Invoice, ws: Workspace, today: date) -> InvoiceDraft:
         invoice_date=today,
         due_date=inv.due_date,
         note=inv.note,
+        discount=inv.discount if inv.discount > 0 else None,
     )
 
 
@@ -275,6 +288,7 @@ def to_out(inv: Invoice) -> InvoiceOut:
         client_email=inv.client.email,
         currency=inv.currency,
         total=inv.total,
+        discount=inv.discount,
         amount_paid=inv.amount_paid,
         due_date=inv.due_date,
         note=inv.note,

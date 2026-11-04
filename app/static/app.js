@@ -8,6 +8,11 @@ const SETTLED = ["paid", "cancelled", "refunded"];
 // Currencies PayPal Invoicing accepts (mirrors app/agents/parser_rules.py).
 const PAYPAL_CURRENCIES = "AUD BRL CAD CHF CNY CZK DKK EUR GBP HKD HUF ILS JPY MXN MYR NOK NZD PHP PLN RUB SEK SGD THB TWD USD".split(" ");
 
+// Buzz the phone, but only once the user has touched the page (browsers block it before).
+function buzz(pattern) {
+  if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(pattern);
+}
+
 function newKey() {
   if (window.crypto?.randomUUID) return crypto.randomUUID();
   return Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, "0")).join("");
@@ -52,6 +57,10 @@ window.sayInvoice = () => ({
   noteOpen: false,
   mode: "invoice",
   quote: null,
+  jobs: [],
+  allJobs: false,
+  job: null,
+  matchedJob: null,
 
   // sent
   invoice: null,
@@ -66,8 +75,318 @@ window.sayInvoice = () => ({
   policy: null,
   saved: false,
 
+  // money view
+  home: null,
+  tab: "owed",
+  detail: null,
+  detailRef: null,
+  acting: false,
+  actionMsg: "",
+  actionError: "",
+  cancelArmed: false,
+  payOpen: false,
+  pay: { amount: "", method: "CASH" },
+
+  // approvals (Deal Agent escalations)
+  approvals: [],
+  countering: false,
+  replying: false,
+  counter: { discount: "", deposit: "", note: "" },
+  deciding: false,
+  approvalError: "",
+  get approval() {
+    return this.approvals[0] || null;
+  },
+
   init() {
     this.listen();
+    this.loadApprovals();
+    this.loadJobs();
+    this.loadHome();
+  },
+
+  // ── who owes me ───────────────────────────────────────────────────────
+  async loadHome() {
+    try {
+      const resp = await fetch("/api/home");
+      if (resp.ok) this.home = await resp.json();
+    } catch {
+      /* keep the last view */
+    }
+  },
+  async openMoney() {
+    this.screen = "money";
+    this.actionMsg = "";
+    await this.loadHome();
+    if (this.home && this.tab === "owed" && !this.home.tabs.owed.length && this.home.tabs.overdue.length) this.tab = "overdue";
+  },
+  async openDetail(kind, id) {
+    this.detailRef = { kind, id };
+    this.actionMsg = "";
+    this.actionError = "";
+    this.cancelArmed = false;
+    await this.refreshDetail();
+    this.screen = "detail";
+    window.scrollTo(0, 0);
+  },
+  async refreshDetail() {
+    if (!this.detailRef) return;
+    try {
+      const resp = await fetch(`/api/jobs/${this.detailRef.kind}/${this.detailRef.id}`);
+      if (resp.ok) this.detail = await resp.json();
+    } catch {
+      /* keep what's on screen */
+    }
+  },
+  stateLabel(d) {
+    if (d.kind === "quote") {
+      return { sent: "Waiting for the client", negotiating: "Negotiating", awaiting_owner: "Needs your answer",
+               accepted: "Booked", declined: "Declined", expired: "Expired" }[d.state] || d.state;
+    }
+    if (d.state === "overdue") return `${d.days_overdue} day${d.days_overdue === 1 ? "" : "s"} overdue`;
+    return { owed: "Waiting for payment", draft: "Not sent", paid: "Paid", cancelled: "Cancelled", refunded: "Refunded" }[d.state] || d.state;
+  },
+  when(iso) {
+    return new Date(iso).toLocaleString(undefined, { day: "numeric", month: "short", hour: "numeric", minute: "2-digit" });
+  },
+  async act(kind) {
+    if (!this.detail || this.acting) return;
+    this.acting = true;
+    this.actionError = "";
+    this.actionMsg = "";
+    try {
+      const resp = await fetch(`/api/invoices/${this.detail.id}/${kind}`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: kind === "retry" ? undefined : "{}",
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.actionError = errorText(body, "That didn't work. Try again.");
+        return;
+      }
+      this.actionMsg = { remind: "Reminder sent ✓", retry: "Sent ✓", cancel: "Invoice cancelled" }[kind] || "Done ✓";
+      await this.refreshDetail();
+      this.loadHome();
+    } catch {
+      this.actionError = "No connection. Try again.";
+    } finally {
+      this.acting = false;
+    }
+  },
+  cancelInvoice() {
+    if (!this.cancelArmed) {
+      this.cancelArmed = true;
+      setTimeout(() => (this.cancelArmed = false), 4000);
+      return;
+    }
+    this.cancelArmed = false;
+    this.act("cancel");
+  },
+  openPay() {
+    this.pay = { amount: String(Number(this.detail.balance)), method: "CASH" };
+    this.actionError = "";
+    this.payOpen = true;
+  },
+  async confirmPay() {
+    const amount = num(this.pay.amount);
+    if (!(amount > 0)) {
+      this.actionError = "Enter the amount received.";
+      return;
+    }
+    this.acting = true;
+    this.actionError = "";
+    try {
+      const resp = await fetch(`/api/invoices/${this.detail.id}/record-payment`, {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ amount: amount.toFixed(2), method: this.pay.method }),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.actionError = errorText(body, "Couldn't record it. Try again.");
+        return;
+      }
+      this.payOpen = false;
+      this.actionMsg = body.status === "paid" ? "Marked as paid ✓" : "Part payment recorded ✓";
+      await this.refreshDetail();
+      this.loadHome();
+    } catch {
+      this.actionError = "No connection. Try again.";
+    } finally {
+      this.acting = false;
+    }
+  },
+  detailQr() {
+    const d = this.detail;
+    this.invoice = { id: d.id, total: d.balance, currency: d.currency, status: d.state === "overdue" ? "sent" : "sent", payer_view_url: d.pay_url };
+    this.openQr();
+  },
+  async copyText(text) {
+    try {
+      await navigator.clipboard.writeText(text);
+      this.copied = true;
+      setTimeout(() => (this.copied = false), 2500);
+    } catch {
+      window.prompt("Copy this link:", text);
+    }
+  },
+  finishFromDetail() {
+    const job = this.jobs.find((j) => j.quote_id === this.detail.id);
+    if (job) this.finishJob(job);
+  },
+
+  // ── finishing booked jobs ─────────────────────────────────────────────
+  async loadJobs() {
+    try {
+      const resp = await fetch("/api/jobs/to-finish");
+      if (resp.ok) this.jobs = await resp.json();
+    } catch {
+      /* the list is a convenience; the mic still works */
+    }
+  },
+  jobLine(j) {
+    const bits = [j.number, this.money(this.toCents(j.total), j.currency)];
+    const d = j.deposit;
+    if (!d) bits.push("no deposit");
+    else if (d.status === "paid") bits.push("deposit paid");
+    else if (d.status === "cancelled") bits.push("deposit cancelled");
+    else bits.push("deposit due");
+    if (j.job_date) bits.push(new Date(j.job_date).toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short" }));
+    return bits.join(" · ");
+  },
+  finishJob(j) {
+    this.job = j;
+    this.mode = "final";
+    this.card = {
+      client_name: j.client_name, client_email: j.client_email, currency: j.currency,
+      due_date: "", notes: "", deposit_pct: "", job_date: "",
+      items: j.lines.map((ln) => ({
+        key: newKey(), name: ln.name, description: ln.description,
+        quantity: String(Number(ln.quantity)), unit_price: String(Number(ln.unit_price)),
+        unit: ln.unit, is_material: ln.is_material, approximate: false,
+      })),
+    };
+    Object.assign(this, {
+      flags: [], missing: [], question: "", warnings: [], transcript: "", answer: "", error: "",
+      draft: { transcript: "", language: "en" }, key: newKey(), matchedJob: null, screen: "preview",
+    });
+  },
+  async useJob(j) {
+    const said = this.transcript;
+    this.finishJob(j);
+    // Re-read what was said against the agreed quote: "used a £45 cartridge" becomes a swap.
+    if (said) await this.submitAnswer({ text: said });
+  },
+  matchJob(result) {
+    const name = (result.client_name || "").toLowerCase().replace(/^(mr|mrs|ms|miss)\.?\s+/, "").trim();
+    const email = (result.client_email || "").toLowerCase();
+    // The most recently booked first: a repeat client's latest job is the likely one.
+    return [...this.jobs].reverse().find((j) => {
+      const jn = (j.client_name || "").toLowerCase();
+      return (email && j.client_email === email) || (name.length > 2 && jn.includes(name));
+    }) || null;
+  },
+  agreedDiscountCents() {
+    const pct = Number(this.job?.labour_discount_pct || 0);
+    return Math.round((this.labourCents() * pct) / 100);
+  },
+  depositPaidCents() {
+    return this.toCents(this.job?.deposit?.paid || 0);
+  },
+  depositUnpaid() {
+    const d = this.job?.deposit;
+    return !!d && ["sent", "overdue"].includes(d.status) && this.toCents(d.paid) === 0;
+  },
+  finalBalanceCents() {
+    return this.totalCents() - this.agreedDiscountCents() - this.depositPaidCents();
+  },
+  async sendFinal() {
+    if (!this.canSend() || this.busy) return;
+    this.busy = true;
+    this.error = "";
+    const dec = (v) => (Math.round(num(v) * 100) / 100).toFixed(2);
+    const payload = {
+      client_name: this.card.client_name.trim(),
+      client_email: this.card.client_email.trim(),
+      items: this.card.items.map((i) => ({
+        name: i.name.trim(), description: (i.description || "").trim(),
+        quantity: dec(i.quantity), unit_price: dec(i.unit_price), unit: i.unit, is_material: i.is_material,
+      })),
+      due_date: this.card.due_date || null,
+      notes: this.card.notes,
+      transcript: this.transcript,
+      draft: this.draft,
+    };
+    try {
+      const resp = await fetch(`/api/quotes/${this.job.quote_id}/final-invoice`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.error = errorText(body, "Couldn't send it. Try again.");
+        return;
+      }
+      this.invoice = body;
+      this.screen = "sent";
+      this.startChecking();
+      this.loadJobs();
+    } catch {
+      this.error = "No connection. Tap Send again when you have signal; it won't send twice.";
+    } finally {
+      this.busy = false;
+    }
+  },
+
+  async loadApprovals() {
+    try {
+      const resp = await fetch("/api/approvals");
+      if (resp.ok) this.approvals = await resp.json();
+    } catch {
+      /* live ones still arrive over SSE */
+    }
+  },
+  onApproval(a) {
+    if (this.approvals.some((x) => x.message_id === a.message_id)) return;
+    this.approvals = [...this.approvals, a];
+    buzz([120, 80, 120]);
+  },
+  newWork() {
+    return (this.approval?.priced?.add_requests || []).length > 0 || (this.approval?.violations || []).includes("needs_pricing");
+  },
+  startCounter() {
+    const a = this.approval;
+    const pct = a?.priced ? Number(a.priced.discount_pct) : 0;
+    this.counter = { discount: String(Math.min(pct || 5, 50)), deposit: a?.priced ? String(Number(a.priced.deposit_pct)) : "", note: "" };
+    this.countering = true;
+  },
+  async decide(action) {
+    const a = this.approval;
+    if (!a) return;
+    this.deciding = true;
+    this.approvalError = "";
+    const body = { action, note: ["counter", "reply"].includes(action) ? this.counter.note : "" };
+    if (action === "counter") {
+      const d = num(this.counter.discount), dep = num(this.counter.deposit);
+      if (!(d >= 0 && d <= 100)) { this.approvalError = "Discount should be 0 to 100%."; this.deciding = false; return; }
+      body.labour_discount_pct = d.toFixed(2);
+      if (String(this.counter.deposit).trim() !== "") body.deposit_pct = dep.toFixed(2);
+    }
+    try {
+      const resp = await fetch(`/api/quotes/${a.quote_id}/messages/${a.message_id}/decision`, {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+      });
+      const out = await resp.json().catch(() => ({}));
+      if (!resp.ok && resp.status !== 409) {
+        this.approvalError = errorText(out, "Couldn't send that. Try again.");
+        return;
+      }
+      // Done (or already answered elsewhere): next card.
+      this.approvals = this.approvals.slice(1);
+      this.countering = false;
+      this.replying = false;
+    } catch {
+      this.approvalError = "No connection. Try again.";
+    } finally {
+      this.deciding = false;
+    }
   },
 
   // ── live updates ──────────────────────────────────────────────────────
@@ -77,9 +396,11 @@ window.sayInvoice = () => ({
     const source = new EventSource("/api/events");
     source.addEventListener("invoice", (e) => this.onInvoice(JSON.parse(e.data)));
     source.addEventListener("quote", (e) => this.onQuote(JSON.parse(e.data)));
+    source.addEventListener("approval", (e) => this.onApproval(JSON.parse(e.data)));
   },
 
   onInvoice(update) {
+    this.liveRefresh();
     if (!this.invoice || update.id !== this.invoice.id) return;
     const wasPaid = this.invoice.status === "paid";
     Object.assign(this.invoice, {
@@ -88,7 +409,7 @@ window.sayInvoice = () => ({
       paid_at: update.paid_at,
     });
     if (SETTLED.includes(update.status)) this.stopChecking();
-    if (update.status === "paid" && !wasPaid) navigator.vibrate?.([80, 60, 160]);
+    if (update.status === "paid" && !wasPaid) buzz([80, 60, 160]);
   },
 
   startChecking() {
@@ -182,7 +503,7 @@ window.sayInvoice = () => ({
     if (blob) form.append("audio", blob, blob.type.includes("mp4") ? "note.m4a" : "note.webm");
     if (text) form.append("text", text);
     // "auto": say "quote" and the card opens as a quote; the switch on the card can change it.
-    form.append("mode", previous ? this.mode : "auto");
+    form.append("mode", previous ? (this.mode === "quote" ? "quote" : "invoice") : "auto");
     form.append("tz", Intl.DateTimeFormat().resolvedOptions().timeZone || "");
     if (previous) form.append("previous", JSON.stringify(previous));
     let resp;
@@ -237,7 +558,9 @@ window.sayInvoice = () => ({
   },
 
   loadCard(result, { keepKey = false } = {}) {
-    this.mode = result.mode;
+    // A follow-up on a final invoice stays a final invoice.
+    if (!(keepKey && this.mode === "final")) this.mode = result.mode;
+    this.matchedJob = this.mode === "invoice" && !keepKey ? this.matchJob(result) : this.matchedJob;
     this.card = {
       deposit_pct: result.deposit_pct != null ? String(Number(result.deposit_pct)) : "",
       job_date: "",
@@ -270,7 +593,7 @@ window.sayInvoice = () => ({
   cardToDraft() {
     return {
       ...this.draft,
-      mode: this.mode,
+      mode: this.mode === "quote" ? "quote" : "invoice",
       deposit_pct: num(this.card.deposit_pct) >= 0 ? num(this.card.deposit_pct) : null,
       deposit_amount: null,
       client_name: this.card.client_name,
@@ -337,8 +660,8 @@ window.sayInvoice = () => ({
   materialsCents() {
     return this.card.items.filter((i) => i.is_material).reduce((s, i) => s + this.lineCents(i), 0);
   },
-  currencySymbol() {
-    const code = (this.card.currency || window.SAYINVOICE.currency || "GBP").toUpperCase();
+  currencySymbol(currency) {
+    const code = (currency || this.card.currency || window.SAYINVOICE.currency || "GBP").toUpperCase();
     try {
       const parts = new Intl.NumberFormat(undefined, { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).formatToParts(0);
       return parts.find((p) => p.type === "currency")?.value || code;
@@ -390,6 +713,7 @@ window.sayInvoice = () => ({
     } else if (!PAY_EMAIL.test(this.card.client_email)) {
       return "Add the client's email so PayPal can send it.";
     }
+    if (this.mode === "final" && this.finalBalanceCents() <= 0) return "The deposit already covers this job.";
     if (!/^[A-Za-z]{3}$/.test(this.card.currency)) return "Currency should be a 3-letter code, like GBP.";
     return "";
   },
@@ -400,6 +724,7 @@ window.sayInvoice = () => ({
   // ── send ──────────────────────────────────────────────────────────────
   async send() {
     if (this.mode === "quote") return this.createQuote();
+    if (this.mode === "final") return this.sendFinal();
     if (!this.canSend() || this.busy) return;
     this.busy = true;
     this.error = "";
@@ -482,12 +807,22 @@ window.sayInvoice = () => ({
       this.busy = false;
     }
   },
+  liveRefresh() {
+    // Whatever changed (paid, part-paid, accepted), the money view and an open job page follow.
+    clearTimeout(this._liveTimer);
+    this._liveTimer = setTimeout(() => {
+      this.loadHome();
+      if (this.screen === "detail") this.refreshDetail();
+    }, 300);
+  },
   onQuote(update) {
+    this.loadJobs();
+    this.liveRefresh();
     if (!this.quote || update.id !== this.quote.id) return;
     const wasBooked = this.quoteBooked();
     this.quote.status = update.status;
     this.quote.deposit = update.deposit_status ? { ...(this.quote.deposit || {}), status: update.deposit_status } : this.quote.deposit;
-    if (this.quoteBooked() && !wasBooked) navigator.vibrate?.([80, 60, 160]);
+    if (this.quoteBooked() && !wasBooked) buzz([80, 60, 160]);
   },
   quoteBooked() {
     const q = this.quote;
@@ -498,6 +833,8 @@ window.sayInvoice = () => ({
     const q = this.quote;
     if (this.quoteBooked()) return "Booked!";
     if (q?.status === "accepted") return "Accepted, deposit due";
+    if (q?.status === "awaiting_owner") return "Client is waiting for you";
+    if (q?.status === "negotiating") return "Client is negotiating";
     return "Quote ready to send";
   },
   quoteMessage() {
@@ -607,11 +944,13 @@ window.sayInvoice = () => ({
   reset() {
     this.stopRecording();
     this.stopChecking();
+    this.loadJobs();
+    this.loadHome();
     Object.assign(this, {
       screen: "record", error: "", busy: false, typed: "", typing: false, answer: "",
       card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [], deposit_pct: "", job_date: "" },
       flags: [], missing: [], question: "", warnings: [], transcript: "", draft: null, key: "", noteOpen: false,
-      mode: "invoice", quote: null,
+      mode: "invoice", quote: null, job: null, matchedJob: null,
       invoice: null, qrOpen: false, qrError: false, copied: false,
     });
   },

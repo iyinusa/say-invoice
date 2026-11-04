@@ -49,6 +49,21 @@ def percent_of(amount: Decimal, pct: Decimal | int | str, currency: str) -> Deci
 _SYMBOL = {"GBP": "£", "USD": "$", "EUR": "€", "AUD": "A$", "CAD": "C$", "NZD": "NZ$", "JPY": "¥"}
 
 
+def compact(value: Decimal, currency: str) -> str:
+    """For stat tiles: £96.50 · £1,765 · £12.9K · £1.2M. Exact amounts live in the lists."""
+    amount = to_money(value, currency)
+    symbol = _SYMBOL.get(currency.upper(), "")
+    suffix = "" if symbol else f" {currency.upper()}"
+    if abs(amount) < 1000:
+        return display(amount, currency)
+    if abs(amount) < 10_000:
+        return f"{symbol}{amount:,.0f}{suffix}"
+    for div, unit in ((Decimal(1_000_000), "M"), (Decimal(1000), "K")):
+        if abs(amount) >= div:
+            return f"{symbol}{(amount / div):.1f}{unit}{suffix}".replace(".0" + unit, unit)
+    return display(amount, currency)
+
+
 def display(value: Decimal, currency: str) -> str:
     """For server-rendered pages: £1,234.50. The phone app formats with Intl instead."""
     amount = to_money(value, currency)

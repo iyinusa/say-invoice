@@ -5,6 +5,7 @@ from __future__ import annotations
 from app.db import Base
 from app.models.core import (
     Client,
+    DealMessage,
     DealPolicy,
     Event,
     Invoice,
@@ -17,6 +18,7 @@ from app.models.core import (
 __all__ = [
     "Base",
     "Client",
+    "DealMessage",
     "DealPolicy",
     "Event",
     "Invoice",

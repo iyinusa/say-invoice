@@ -143,6 +143,34 @@ class PricedOffer:
     removed: tuple[str, ...] = ()  # names of dropped lines
     add_requests: tuple[str, ...] = ()
 
+    def to_json(self) -> dict[str, Any]:
+        """Stored on the deal message; amounts as strings, like the API."""
+        return {
+            "currency": self.currency,
+            "lines": [
+                {
+                    "line_id": ln.line_id,
+                    "name": ln.name,
+                    "quantity": str(ln.quantity),
+                    "unit_price": str(ln.unit_price),
+                    "is_material": ln.is_material,
+                    "line_total": str(ln.line_total),
+                }
+                for ln in self.lines
+            ],
+            "list_total": str(self.list_total),
+            "labour_total": str(self.labour_total),
+            "discount_pct": str(self.discount_pct),
+            "discount_amount": str(self.discount_amount),
+            "total": str(self.total),
+            "deposit_pct": str(self.deposit_pct),
+            "deposit_amount": str(self.deposit_amount),
+            "balance": str(self.balance),
+            "job_date": self.job_date.isoformat() if self.job_date else None,
+            "removed": list(self.removed),
+            "add_requests": list(self.add_requests),
+        }
+
     def amounts(self) -> set[Decimal]:
         """Every figure the agent may quote back to the client."""
         found = {
@@ -313,15 +341,18 @@ def amounts_in(text: str) -> list[Decimal]:
     return found
 
 
-def check_reply(text: str, priced: PricedOffer, base: QuoteTerms) -> list[Violation]:
+def check_reply(
+    text: str, priced: PricedOffer | None, base: QuoteTerms, also: set[Decimal] = frozenset()
+) -> list[Violation]:
     """Every money amount the agent writes must be one code computed.
 
     "Sure, £10 all in!" with a real total of £117 is caught here, even if the
     structured offer itself is fine.
     """
-    allowed = priced.amounts() | {base.total}
-    allowed = {to_money(a, priced.currency) for a in allowed}
-    wrong = [a for a in amounts_in(text) if to_money(a, priced.currency) not in allowed]
+    cur = base.currency
+    allowed = (priced.amounts() if priced else set()) | {base.total} | set(also)
+    allowed = {to_money(a, cur) for a in allowed}
+    wrong = [a for a in amounts_in(text) if to_money(a, cur) not in allowed]
     if not wrong:
         return []
     return [

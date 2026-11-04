@@ -13,7 +13,7 @@ from app.agents.parser import ParserNotConfigured
 from app.db import get_sessionmaker
 from app.logging_config import configure_logging, get_logger
 from app.paypal import PayPalNotConfigured, close_paypal, get_paypal
-from app.routers import health, invoices, parse, policy, quotes, ui, webhooks
+from app.routers import health, invoices, money, parse, policy, quotes, ui, webhooks
 from app.routers.ui import STATIC_DIR
 from app.services.payments import reconcile_forever
 from app.settings import get_settings
@@ -73,6 +73,9 @@ def create_app() -> FastAPI:
     app.include_router(policy.router)
     app.include_router(quotes.router)
     app.include_router(quotes.public)
+    app.include_router(quotes.approvals)
+    app.include_router(quotes.jobs)
+    app.include_router(money.router)
     app.include_router(webhooks.router)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

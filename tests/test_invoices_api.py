@@ -2,6 +2,7 @@ from __future__ import annotations
 
 from collections.abc import Iterator, Mapping
 from datetime import UTC, datetime, timedelta
+from decimal import Decimal
 from typing import Any
 
 import pytest
@@ -22,6 +23,8 @@ class FakePayPal:
         self.numbers = 0
         self.created: dict[str, str] = {}  # request id -> invoice id, like PayPal's idempotency
         self.remote: dict[str, dict[str, Any]] = {}  # what get_invoice returns, by PayPal id
+        self.totals: dict[str, Decimal] = {}
+        self.paid: dict[str, Decimal] = {}
 
     def _maybe_fail(self, name: str) -> None:
         if self.fail.get(name):
@@ -45,6 +48,13 @@ class FakePayPal:
         self.calls.append(("create", {"body": body, "request_id": request_id}))
         self._maybe_fail("create")
         inv_id = self.created.setdefault(str(request_id), f"INV2-{len(self.created) + 1}")
+        total = sum(
+            Decimal(i["quantity"]) * Decimal(i["unit_amount"]["value"]) for i in body["items"]
+        )
+        disc = (body.get("amount") or {}).get("breakdown", {}).get("discount", {})
+        if disc:
+            total -= Decimal(disc["invoice_discount"]["amount"]["value"])
+        self.totals[inv_id] = total
         return {"id": inv_id, "status": "DRAFT"}
 
     async def send_invoice(self, invoice_id: str, *, request_id: str | None = None) -> str:
@@ -56,6 +66,38 @@ class FakePayPal:
         self.calls.append(("get", invoice_id))
         self._maybe_fail("get")
         return self.remote.get(invoice_id, {"id": invoice_id, "status": "SENT"})
+
+    async def cancel(self, invoice_id: str, *, subject: str = "", note: str = "") -> None:
+        self.calls.append(("cancel", invoice_id))
+        self._maybe_fail("cancel")
+        self.remote[invoice_id] = {"id": invoice_id, "status": "CANCELLED"}
+
+    async def remind(self, invoice_id: str, *, subject: str = "", note: str = "") -> None:
+        self.calls.append(("remind", {"invoice_id": invoice_id, "subject": subject, "note": note}))
+        self._maybe_fail("remind")
+
+    async def record_payment(
+        self,
+        invoice_id: str,
+        *,
+        amount: Decimal,
+        currency: str,
+        method: str = "CASH",
+        paid_on: Any = None,
+        note: str = "",
+    ) -> str:
+        self.calls.append(
+            ("record", {"invoice_id": invoice_id, "amount": amount, "method": method})
+        )
+        paid = self.paid.get(invoice_id, Decimal(0)) + amount
+        self.paid[invoice_id] = paid
+        full = paid >= self.totals.get(invoice_id, paid)
+        self.remote[invoice_id] = {
+            "id": invoice_id,
+            "status": "MARKED_AS_PAID" if full else "PARTIALLY_PAID",
+            "payments": {"paid_amount": {"currency_code": currency, "value": str(paid)}},
+        }
+        return "PAY-1"
 
     async def generate_qr_code(self, invoice_id: str, *, size: int = 500) -> bytes:
         self.calls.append(("qr", invoice_id))

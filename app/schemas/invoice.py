@@ -67,6 +67,7 @@ class InvoiceOut(BaseModel):
     client_email: str
     currency: str
     total: Decimal
+    discount: Decimal
     amount_paid: Decimal
     due_date: date | None
     note: str

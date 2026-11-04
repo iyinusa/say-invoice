@@ -61,6 +61,23 @@
       Or type it instead</button>
 
     <p class="error" role="alert" x-show="error" x-text="error"></p>
+
+    <section class="jobs" x-show="jobs.length && !typing && !recording">
+      <h2 class="group-title">Jobs to finish</h2>
+      <div class="group">
+        <template x-for="j in (allJobs ? jobs : jobs.slice(0, 5))" :key="j.quote_id">
+          <button class="job" @click="finishJob(j)">
+            <span class="job-text">
+              <b x-text="j.client_name || j.client_email"></b>
+              <small x-text="jobLine(j)"></small>
+            </span>
+            <span class="job-cta">Finish</span>
+          </button>
+        </template>
+      </div>
+      <button class="btn ghost small" x-show="jobs.length > 5" @click="allJobs = !allJobs"
+              x-text="allJobs ? 'Show fewer' : `Show all ${jobs.length}`"></button>
+    </section>
   </section>
 
   <!-- ── 2. Reading ────────────────────────────────────────────── -->
@@ -71,7 +88,15 @@
 
   <!-- ── 3. Preview ────────────────────────────────────────────── -->
   <section class="screen preview" x-show="screen === 'preview'">
-    <template x-if="question">
+    <template x-if="matchedJob && mode !== 'final'">
+      <div class="callout match" role="status">
+        <p class="callout-title" x-text="`This looks like ${matchedJob.client_name}'s booked job (${matchedJob.number}).`"></p>
+        <p class="callout-help">Use the agreed quote, with your changes, and take off the deposit.</p>
+        <button class="btn primary" @click="useJob(matchedJob)">Use the quote</button>
+      </div>
+    </template>
+
+    <template x-if="question && !(matchedJob && mode !== 'final')">
       <div class="callout ask" role="status">
         <p class="callout-title" x-text="question"></p>
         <div class="ask-row">
@@ -87,12 +112,30 @@
       </div>
     </template>
 
+    <template x-if="mode === 'final' && !question">
+      <div class="callout change">
+        <p class="callout-title">Anything different from the quote?</p>
+        <p class="callout-help">Say or type it, e.g. “used a £45 cartridge instead of the parts”.</p>
+        <div class="ask-row">
+          <div class="input-group grow">
+            <input type="text" x-model="answer" placeholder="What changed" aria-label="What changed"
+                   @keydown.enter.prevent="answerTyped()">
+            <button class="addon-btn" :class="{ live: recording }" @click="toggleRecording('answer')"
+                    :aria-label="recording ? 'Stop recording' : 'Say what changed'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg></button>
+          </div>
+          <button class="btn primary compact" :disabled="!answer.trim() || busy" @click="answerTyped()"
+                  x-text="busy ? '…' : 'Update'"></button>
+        </div>
+      </div>
+    </template>
+
     <ul class="callout warn" x-show="warnings.length">
       <template x-for="w in warnings"><li x-text="w"></li></template>
     </ul>
 
     <div class="card invoice">
-      <div class="segmented doc-type" role="radiogroup" aria-label="Send as">
+      <p class="final-head" x-show="mode === 'final'">Final invoice for quote <b x-text="job?.number"></b></p>
+      <div class="segmented doc-type" role="radiogroup" aria-label="Send as" x-show="mode !== 'final'">
         <button type="button" role="radio" :aria-checked="mode === 'invoice'" @click="mode = 'invoice'">Invoice</button>
         <button type="button" role="radio" :aria-checked="mode === 'quote'" @click="mode = 'quote'">Quote</button>
       </div>
@@ -169,14 +212,14 @@
         </div>
       </div>
       <div class="terms-grid" :class="{ halves: mode === 'quote' }">
-        <div class="field" :class="flagClass('due_date')" x-show="mode === 'invoice'">
+        <div class="field" :class="flagClass('due_date')" x-show="mode !== 'quote'">
           <label class="field-label" for="due-date">Due date</label>
           <input id="due-date" class="control" type="date" x-model="card.due_date" @input="confirmField('due_date')">
           <p class="field-help" x-show="!card.due_date" x-text="dueHint()"></p>
         </div>
         <div class="field">
           <label class="field-label" for="currency">Currency</label>
-          <select id="currency" class="control" x-model="card.currency">
+          <select id="currency" class="control" x-model="card.currency" :disabled="mode === 'final'">
             <template x-for="c in currencyChoices()" :key="c">
               <option :value="c" x-text="c" :selected="c === card.currency"></option>
             </template>
@@ -193,18 +236,22 @@
       <dl class="summary">
         <div x-show="materialsCents() > 0"><dt>Labour</dt><dd x-text="money(labourCents())"></dd></div>
         <div x-show="materialsCents() > 0"><dt>Materials</dt><dd x-text="money(materialsCents())"></dd></div>
-        <div class="grand"><dt>Total</dt><dd x-text="money(totalCents())"></dd></div>
+        <div x-show="mode === 'final' && agreedDiscountCents() > 0"><dt x-text="`Agreed discount (${job?.labour_discount_pct}% off labour)`"></dt><dd x-text="`−${money(agreedDiscountCents())}`"></dd></div>
+        <div x-show="mode === 'final' && depositPaidCents() > 0"><dt>Deposit received</dt><dd x-text="`−${money(depositPaidCents())}`"></dd></div>
+        <div class="grand" x-show="mode !== 'final'"><dt>Total</dt><dd x-text="money(totalCents())"></dd></div>
+        <div class="grand" x-show="mode === 'final'"><dt>Balance due</dt><dd x-text="money(finalBalanceCents())"></dd></div>
         <div x-show="mode === 'quote' && depositCents() > 0"><dt x-text="`Deposit (${depositPct()}%)`"></dt><dd x-text="money(depositCents())"></dd></div>
       </dl>
       <p class="said" x-show="transcript"><span>You said</span>“<span x-text="transcript"></span>”</p>
     </div>
 
     <p class="error" role="alert" x-show="error" x-text="error"></p>
+    <p class="why" x-show="mode === 'final' && depositUnpaid()">The unpaid deposit request will be cancelled, so the client is only asked once.</p>
     <p class="why" x-show="!canSend() && !busy" x-text="blocker()"></p>
 
     <div class="actions">
       <button class="btn primary big" :disabled="!canSend() || busy" @click="send()"
-              x-text="busy ? (mode === 'quote' ? 'Creating…' : 'Sending…') : (mode === 'quote' ? `Create ${money(totalCents())} quote` : `Send ${money(totalCents())} invoice`)"></button>
+              x-text="busy ? (mode === 'quote' ? 'Creating…' : 'Sending…') : (mode === 'quote' ? `Create ${money(totalCents())} quote` : mode === 'final' ? `Send ${money(finalBalanceCents())} final invoice` : `Send ${money(totalCents())} invoice`)"></button>
       <button class="btn ghost" @click="reset()" :disabled="busy">Start again</button>
     </div>
   </section>
@@ -344,6 +391,256 @@
           <button type="button" class="btn ghost" @click="screen = 'record'; error = ''">Back</button>
         </div>
       </form>
+    </template>
+  </section>
+
+  <!-- ── Who owes me ─────────────────────────────────────────── -->
+  <section class="screen money" x-show="screen === 'money'">
+    <h1 class="sr-only">Who owes me</h1>
+    <template x-if="home">
+      <div>
+        <div class="hero-stat">
+          <span class="stat-label">Owed to you</span>
+          <span class="hero-value" x-text="home.totals.owed"></span>
+          <span class="stat-sub" x-text="`${home.totals.owed_count} unpaid invoice${home.totals.owed_count === 1 ? '' : 's'}`"></span>
+        </div>
+        <div class="stats">
+          <button class="stat" :class="{ alert: home.totals.overdue_count > 0 }" @click="tab = 'overdue'">
+            <span class="stat-label"><span class="warn-icon" aria-hidden="true" x-show="home.totals.overdue_count > 0">!</span>Overdue</span>
+            <span class="stat-value" x-text="home.totals.overdue"></span>
+            <span class="stat-sub" x-text="`${home.totals.overdue_count} invoice${home.totals.overdue_count === 1 ? '' : 's'}`"></span>
+          </button>
+          <button class="stat" @click="tab = 'paid'">
+            <span class="stat-label" x-text="`Paid in ${home.totals.month}`"></span>
+            <span class="stat-value" x-text="home.totals.paid_month"></span>
+            <span class="stat-sub">this month</span>
+          </button>
+          <button class="stat" @click="tab = 'quotes'">
+            <span class="stat-label">Quotes out</span>
+            <span class="stat-value" x-text="home.totals.quotes_out"></span>
+            <span class="stat-sub" x-text="`${home.totals.quotes_count} waiting`"></span>
+          </button>
+        </div>
+
+        <div class="segmented tabs" role="tablist" aria-label="Show">
+          <template x-for="t in ['quotes', 'owed', 'overdue', 'paid']" :key="t">
+            <button type="button" role="tab" :aria-selected="tab === t" :aria-checked="tab === t" @click="tab = t">
+              <span x-text="{ quotes: 'Quotes', owed: 'Owed', overdue: 'Overdue', paid: 'Paid' }[t]"></span>
+              <span class="count" x-show="home.tabs[t].length" x-text="home.tabs[t].length"></span>
+            </button>
+          </template>
+        </div>
+
+        <ul class="rows" x-show="home.tabs[tab].length">
+          <template x-for="r in home.tabs[tab]" :key="r.kind + r.id">
+            <li>
+              <button class="row" :class="r.state" @click="openDetail(r.kind, r.id)">
+                <span class="row-text">
+                  <b x-text="r.title"></b>
+                  <small x-text="r.subtitle"></small>
+                </span>
+                <span class="row-amount" x-text="r.amount"></span>
+              </button>
+            </li>
+          </template>
+        </ul>
+        <div class="empty" x-show="!home.tabs[tab].length">
+          <p x-text="{ quotes: 'No quotes waiting. Say “Quote for…” to make one.', owed: 'Nobody owes you anything right now.', overdue: 'Nothing overdue. Nice.', paid: 'Payments will show here.' }[tab]"></p>
+        </div>
+      </div>
+    </template>
+  </section>
+
+  <!-- ── Job page ───────────────────────────────────────────────── -->
+  <section class="screen detail" x-show="screen === 'detail'">
+    <button class="back" @click="openMoney()">‹ Who owes me</button>
+    <template x-if="detail">
+      <div>
+        <p class="doc-kicker" x-text="detail.reference"></p>
+        <h1 x-text="detail.title"></h1>
+        <p class="muted detail-email" x-text="detail.email"></p>
+
+        <div class="card amount-card">
+          <span class="pill-state" :class="detail.state" x-text="stateLabel(detail)"></span>
+          <template x-if="detail.kind === 'invoice'">
+            <dl class="summary">
+              <div class="grand"><dt x-text="['paid', 'cancelled', 'refunded'].includes(detail.state) ? 'Total' : 'Balance due'"></dt>
+                <dd x-text="['paid', 'cancelled', 'refunded'].includes(detail.state) ? detail.total_display : detail.balance_display"></dd></div>
+              <div><dt>Invoice total</dt><dd x-text="detail.total_display"></dd></div>
+              <div x-show="detail.paid_display !== money(0, detail.currency)"><dt>Paid so far</dt><dd x-text="detail.paid_display"></dd></div>
+              <div><dt>Due</dt><dd x-text="detail.due"></dd></div>
+            </dl>
+          </template>
+          <template x-if="detail.kind === 'quote'">
+            <dl class="summary">
+              <div class="grand"><dt>Quote total</dt><dd x-text="detail.total_display"></dd></div>
+              <div><dt>Deposit</dt><dd x-text="detail.deposit_display"></dd></div>
+            </dl>
+          </template>
+        </div>
+        <p class="error" x-show="detail.state === 'draft' && detail.last_error" x-text="detail.last_error"></p>
+        <p class="notice" role="status" x-show="actionMsg" x-text="actionMsg"></p>
+        <p class="error" role="alert" x-show="actionError" x-text="actionError"></p>
+
+        <div class="detail-actions">
+          <template x-if="detail.kind === 'invoice'">
+            <div class="actions flush">
+              <button class="btn primary big" x-show="detail.actions.retry" :disabled="acting" @click="act('retry')">Send again</button>
+              <button class="btn primary big" x-show="detail.actions.qr" @click="detailQr()">Show QR to pay now</button>
+              <div class="pair">
+                <button class="btn" x-show="detail.actions.remind" :disabled="acting" @click="act('remind')">Remind now</button>
+                <button class="btn" x-show="detail.actions.record_payment" :disabled="acting" @click="openPay()">Mark as paid</button>
+              </div>
+              <button class="btn ghost" x-show="detail.pay_url && detail.actions.qr" @click="copyText(detail.pay_url)" x-text="copied ? 'Pay link copied ✓' : 'Copy pay link'"></button>
+              <button class="btn ghost danger" x-show="detail.actions.cancel" :disabled="acting" @click="cancelInvoice()"
+                      x-text="cancelArmed ? 'Tap again to cancel the invoice' : 'Cancel invoice'"></button>
+            </div>
+          </template>
+          <template x-if="detail.kind === 'quote'">
+            <div class="actions flush">
+              <button class="btn primary big" x-show="detail.actions.finish" @click="finishFromDetail()">Finish job &amp; invoice</button>
+              <div class="pair">
+                <button class="btn" @click="copyText(detail.public_url)" x-text="copied ? 'Copied ✓' : 'Copy quote link'"></button>
+                <a class="btn" :href="detail.public_url" target="_blank" rel="noopener">Open quote page</a>
+              </div>
+            </div>
+          </template>
+        </div>
+
+        <template x-if="detail.kind === 'invoice' && detail.quote">
+          <button class="link-row" @click="openDetail('quote', detail.quote.id)" x-text="`Part of quote ${detail.quote.number} ›`"></button>
+        </template>
+        <template x-if="detail.kind === 'quote' && detail.invoices.length">
+          <div>
+            <h2 class="group-title">Invoices</h2>
+            <ul class="rows">
+              <template x-for="r in detail.invoices" :key="r.id">
+                <li><button class="row" :class="r.state" @click="openDetail('invoice', r.id)">
+                  <span class="row-text"><b x-text="r.subtitle.split(' · ')[0]"></b><small x-text="r.subtitle.split(' · ').slice(1).join(' · ')"></small></span>
+                  <span class="row-amount" x-text="r.amount"></span>
+                </button></li>
+              </template>
+            </ul>
+          </div>
+        </template>
+
+        <h2 class="group-title">Work</h2>
+        <ul class="work-list">
+          <template x-for="i in detail.items"><li><span x-text="i.name"></span><span x-text="i.amount"></span></li></template>
+        </ul>
+
+        <h2 class="group-title">Timeline</h2>
+        <ol class="timeline">
+          <template x-for="e in detail.timeline">
+            <li :class="e.kind"><span class="tl-dot" aria-hidden="true"></span>
+              <span class="tl-text" x-text="e.label"></span>
+              <time class="tl-time" :datetime="e.at" x-text="when(e.at)"></time></li>
+          </template>
+        </ol>
+      </div>
+    </template>
+  </section>
+
+  <!-- ── Mark as paid sheet ─────────────────────────────────────── -->
+  <div class="sheet-backdrop" x-show="payOpen" x-transition.opacity @click="payOpen = false"></div>
+  <section class="sheet" x-show="payOpen" x-transition role="dialog" aria-modal="true" aria-labelledby="pay-title">
+    <template x-if="payOpen && detail">
+      <form @submit.prevent="confirmPay()">
+        <p class="sheet-kicker" x-text="`${detail.reference} · ${detail.title}`"></p>
+        <h2 id="pay-title">Mark as paid</h2>
+        <div class="field">
+          <label class="field-label" for="pay-amount">Amount received</label>
+          <div class="input-group">
+            <span class="addon" x-text="currencySymbol(detail.currency)"></span>
+            <input id="pay-amount" class="num" type="text" inputmode="decimal" x-model="pay.amount">
+          </div>
+          <p class="field-help" x-text="`Balance is ${detail.balance_display}. Less than that records a part payment.`"></p>
+        </div>
+        <div class="field">
+          <span class="field-label">How</span>
+          <div class="segmented method" role="radiogroup" aria-label="Payment method">
+            <template x-for="m in [['CASH', 'Cash'], ['BANK_TRANSFER', 'Bank'], ['CHECK', 'Cheque'], ['OTHER', 'Other']]">
+              <button type="button" role="radio" :aria-checked="pay.method === m[0]" @click="pay.method = m[0]" x-text="m[1]"></button>
+            </template>
+          </div>
+        </div>
+        <p class="error" role="alert" x-show="actionError" x-text="actionError"></p>
+        <div class="sheet-actions stack">
+          <button class="btn primary" :disabled="acting" x-text="acting ? 'Recording…' : 'Record payment'"></button>
+          <button type="button" class="btn ghost" @click="payOpen = false">Back</button>
+        </div>
+      </form>
+    </template>
+  </section>
+
+  <!-- ── Tab bar ────────────────────────────────────────────────── -->
+  <nav class="tabbar" x-show="['record', 'money', 'detail'].includes(screen)" aria-label="Main">
+    <button :class="{ on: screen === 'record' }" @click="reset()" :aria-current="screen === 'record' ? 'page' : null">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg>
+      <span>New job</span>
+    </button>
+    <button :class="{ on: screen === 'money' || screen === 'detail' }" @click="openMoney()" :aria-current="screen === 'money' ? 'page' : null">
+      <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M4 5h16a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1Zm1 2v10h14V7H5Zm2 2h4v2H7V9Zm0 4h7v2H7v-2Zm9-4h1v2h-1V9Z"/></svg>
+      <span>Who owes me</span>
+      <span class="tab-badge" x-show="home?.totals.overdue_count" x-text="home?.totals.overdue_count" :aria-label="`${home?.totals.overdue_count} overdue`"></span>
+    </button>
+  </nav>
+
+  <!-- ── Approval card: the Deal Agent needs the owner ───────── -->
+  <div class="sheet-backdrop" x-show="approval" x-transition.opacity></div>
+  <section class="sheet" x-show="approval" x-transition role="dialog" aria-modal="true" aria-labelledby="approval-title">
+    <template x-if="approval">
+      <div>
+        <p class="sheet-kicker" x-text="`${approval.number} · ${approval.client_name || 'Client'}${approvals.length > 1 ? ` · 1 of ${approvals.length}` : ''}`"></p>
+        <h2 id="approval-title">A client needs your answer</h2>
+        <blockquote class="asked" x-text="`“${approval.client_text}”`"></blockquote>
+        <p class="sheet-summary" x-text="approval.summary"></p>
+        <p class="sheet-note" x-show="newWork()">This adds work that needs your price. Reply, or send a counter-offer.</p>
+        <div class="compare" x-show="approval.priced && !newWork()">
+          <div><span>Quoted</span><b x-text="money(toCents(approval.quote_total), approval.currency)"></b></div>
+          <div class="arrow" aria-hidden="true">→</div>
+          <div><span>They'd pay</span><b x-text="approval.priced ? money(toCents(approval.priced.total), approval.currency) : ''"></b></div>
+        </div>
+
+        <div class="field" x-show="replying">
+          <label class="field-label" for="r-note">Your answer</label>
+          <textarea id="r-note" class="control" rows="3" x-model="counter.note" maxlength="500"
+                    placeholder="e.g. Yes, I'll take the old tap away at no extra cost."></textarea>
+        </div>
+
+        <div class="counter" x-show="countering">
+          <div class="terms-grid halves">
+            <div class="field">
+              <label class="field-label" for="c-discount">Off labour</label>
+              <div class="input-group"><input id="c-discount" class="num" type="text" inputmode="decimal" x-model="counter.discount"><span class="addon">%</span></div>
+            </div>
+            <div class="field">
+              <label class="field-label" for="c-deposit">Deposit</label>
+              <div class="input-group"><input id="c-deposit" class="num" type="text" inputmode="decimal" x-model="counter.deposit"><span class="addon">%</span></div>
+            </div>
+          </div>
+          <div class="field">
+            <label class="field-label" for="c-note">Message <span class="optional">optional</span></label>
+            <input id="c-note" class="control" type="text" x-model="counter.note" maxlength="500" placeholder="e.g. Best I can do for a weekday">
+          </div>
+        </div>
+
+        <p class="error" role="alert" x-show="approvalError" x-text="approvalError"></p>
+        <div class="sheet-actions" x-show="!countering && !replying">
+          <button class="btn primary" x-show="approval.priced && approval.violations.length && !newWork()" :disabled="deciding" @click="decide('approve')">Approve</button>
+          <button class="btn" :class="{ primary: !approval.violations.length || newWork() }" :disabled="deciding" @click="replying = true; counter.note = ''">Reply</button>
+          <button class="btn" :disabled="deciding" @click="startCounter()">Counter-offer</button>
+          <button class="btn ghost danger" :disabled="deciding" @click="decide('decline')">Decline</button>
+        </div>
+        <div class="sheet-actions" x-show="replying">
+          <button class="btn primary" :disabled="deciding || !counter.note.trim()" @click="decide('reply')">Send answer</button>
+          <button class="btn ghost" :disabled="deciding" @click="replying = false">Back</button>
+        </div>
+        <div class="sheet-actions" x-show="countering">
+          <button class="btn primary" :disabled="deciding" @click="decide('counter')">Send counter-offer</button>
+          <button class="btn ghost" :disabled="deciding" @click="countering = false">Back</button>
+        </div>
+      </div>
     </template>
   </section>
 

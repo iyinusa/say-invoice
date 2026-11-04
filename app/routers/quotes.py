@@ -8,19 +8,31 @@ from __future__ import annotations
 
 import time
 from datetime import UTC, datetime
+from decimal import Decimal
 
 from fastapi import APIRouter, Depends, HTTPException, Request, Response
 from fastapi.responses import HTMLResponse
+from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
-from app.models import Quote, Workspace
+from app.deals import negotiator
+from app.deals.agent import DealAgentUnavailable, DealModel, get_deal_model
+from app.models import DealMessage, Quote, Workspace
 from app.money import display, line_total, plain
 from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.routers.invoices import current_workspace
 from app.routers.ui import ASSET_VERSION, templates
-from app.schemas.quote import AcceptIn, QuoteIn, QuoteOut
-from app.services import invoicing, payments, quotes
+from app.schemas.invoice import InvoiceOut
+from app.schemas.quote import (
+    AcceptIn,
+    ClientMessageIn,
+    DecisionIn,
+    FinalIn,
+    QuoteIn,
+    QuoteOut,
+)
+from app.services import final, invoicing, payments, quotes
 from app.services import policy as policies
 from app.settings import Settings, get_settings
 
@@ -67,7 +79,205 @@ async def read_quote(
     return quotes.to_out(q, await quotes.deposit_invoice(session, q), settings.public_base_url)
 
 
+@router.get("/{quote_id}/messages")
+async def owner_messages(
+    quote_id: str,
+    session: AsyncSession = Depends(get_session),
+    ws: Workspace = Depends(current_workspace),
+) -> list[dict[str, object]]:
+    """The whole negotiation, including what the guard refused and why."""
+    q = await quotes.get_quote(session, ws, quote_id)
+    if q is None:
+        raise HTTPException(404, "quote not found")
+    return [
+        {
+            "id": m.id, "role": m.role, "text": m.text, "offer_status": m.offer_status,
+            "offer": m.offer, "priced": m.priced, "violations": m.violations,
+            "owner_summary": m.owner_summary, "created_at": m.created_at.isoformat(),
+        }
+        for m in await negotiator.history(session, q)
+    ]  # fmt: skip
+
+
+@router.post("/{quote_id}/messages/{message_id}/decision")
+async def owner_decision(
+    quote_id: str,
+    message_id: str,
+    data: DecisionIn,
+    session: AsyncSession = Depends(get_session),
+    ws: Workspace = Depends(current_workspace),
+) -> dict[str, object]:
+    """Approve / Decline / Counter on an escalated request."""
+    q = await quotes.get_quote(session, ws, quote_id)
+    if q is None:
+        raise HTTPException(404, "quote not found")
+    try:
+        reply = await negotiator.owner_decision(
+            session, q, message_id, data.action,  # type: ignore[arg-type]
+            today=_today().date(), labour_discount_pct=data.labour_discount_pct,
+            deposit_pct=data.deposit_pct, note=data.note,
+        )  # fmt: skip
+    except negotiator.OfferUnavailable as exc:
+        raise HTTPException(409, str(exc).capitalize() + ".") from exc
+    return {"status": q.status, "message": client_view(reply)}
+
+
+@router.post("/{quote_id}/final-invoice", response_model=InvoiceOut, status_code=201)
+async def send_final_invoice(
+    quote_id: str,
+    data: FinalIn,
+    session: AsyncSession = Depends(get_session),
+    ws: Workspace = Depends(current_workspace),
+    paypal: PayPalClient = Depends(get_paypal),
+) -> InvoiceOut:
+    """Finish the job: the work as done, less the agreed discount and the deposit received."""
+    q = await quotes.get_quote(session, ws, quote_id)
+    if q is None:
+        raise HTTPException(404, "quote not found")
+    today = _today().date()
+    if data.due_date is not None and data.due_date < today:
+        raise HTTPException(422, "The due date is in the past.")
+    try:
+        inv = await final.send_final(
+            session, paypal, ws, q, client_name=data.client_name or q.client_name,
+            client_email=str(data.client_email), items=data.items, due_date=data.due_date,
+            notes=data.notes, transcript=data.transcript, draft=data.draft, today=today,
+        )  # fmt: skip
+    except final.AlreadyInvoiced as exc:
+        # A retried tap after a dropped signal: hand back the invoice it already made.
+        return invoicing.to_out(exc.invoice)
+    except final.NothingToInvoice as exc:
+        raise HTTPException(422, str(exc).capitalize() + ".") from exc
+    except quotes.QuoteClosed as exc:
+        raise HTTPException(409, str(exc).capitalize() + ".") from exc
+    except PayPalError as exc:
+        raise HTTPException(502, exc.human()) from exc
+    return invoicing.to_out(inv)
+
+
+jobs = APIRouter(prefix="/api/jobs", tags=["quotes"])
+
+
+@jobs.get("/to-finish")
+async def jobs_to_finish(
+    session: AsyncSession = Depends(get_session), ws: Workspace = Depends(current_workspace)
+) -> list[dict[str, object]]:
+    return await final.jobs_to_finish(session, ws)
+
+
+approvals = APIRouter(prefix="/api/approvals", tags=["quotes"])
+
+
+@approvals.get("")
+async def pending_approvals(
+    session: AsyncSession = Depends(get_session), ws: Workspace = Depends(current_workspace)
+) -> list[dict[str, object]]:
+    """Requests waiting for the owner, for when the app opens (live ones arrive over SSE)."""
+    rows = await session.execute(
+        select(DealMessage, Quote)
+        .join(Quote, Quote.id == DealMessage.quote_id)
+        .where(DealMessage.workspace_id == ws.id, DealMessage.offer_status == "escalated")
+        .order_by(DealMessage.created_at)
+    )
+    out = []
+    for msg, q in rows.all():
+        client_text = await session.scalar(
+            select(DealMessage.text)
+            .where(DealMessage.quote_id == q.id, DealMessage.role == "client",
+                   DealMessage.created_at <= msg.created_at)
+            .order_by(DealMessage.created_at.desc())
+            .limit(1)
+        )  # fmt: skip
+        out.append(negotiator.approval_event(q, msg, client_text or ""))
+    return out
+
+
 # ── client (public) ──────────────────────────────────────────────────────────
+
+
+def client_view(m: DealMessage) -> dict[str, object]:
+    """What the client may see of a message: never the guard's reasons or owner notes."""
+    shown = m.offer_status in ("open", "accepted", "superseded") and m.priced is not None
+    offer = None
+    if shown and m.priced:
+        p, cur = m.priced, m.priced["currency"]
+        offer = {
+            "lines": [{"name": ln["name"], "quantity": str(plain(Decimal(ln["quantity"]))),
+                       "total": display(Decimal(ln["line_total"]), cur)} for ln in p["lines"]],
+            "removed": p["removed"],
+            "discount_pct": str(plain(Decimal(p["discount_pct"]))),
+            "discount": display(Decimal(p["discount_amount"]), cur),
+            "has_discount": Decimal(p["discount_amount"]) > 0,
+            "total": display(Decimal(p["total"]), cur),
+            "deposit_pct": str(plain(Decimal(p["deposit_pct"]))),
+            "deposit": display(Decimal(p["deposit_amount"]), cur),
+            "has_deposit": Decimal(p["deposit_amount"]) > 0,
+            "job_date": p["job_date"],
+        }  # fmt: skip
+    return {
+        "id": m.id,
+        "role": m.role,
+        "text": m.text,
+        "offer_status": m.offer_status if shown else "none",
+        "offer": offer,
+    }
+
+
+async def _conversation(session: AsyncSession, q: Quote) -> dict[str, object]:
+    return {
+        "status": q.status,
+        "messages": [client_view(m) for m in await negotiator.history(session, q)],
+    }
+
+
+@public.get("/{token}/messages")
+async def client_messages(
+    token: str, session: AsyncSession = Depends(get_session)
+) -> dict[str, object]:
+    return await _conversation(session, await _quote_or_404(token, session))
+
+
+@public.post("/{token}/messages")
+async def post_client_message(
+    token: str,
+    data: ClientMessageIn,
+    session: AsyncSession = Depends(get_session),
+    model: DealModel = Depends(get_deal_model),
+) -> dict[str, object]:
+    q = await _quote_or_404(token, session)
+    try:
+        await negotiator.client_message(session, model, q, data.text, today=_today().date())
+    except negotiator.NegotiationClosed as exc:
+        raise HTTPException(409, str(exc).capitalize() + ".") from exc
+    except negotiator.TooManyMessages as exc:
+        raise HTTPException(429, str(exc).capitalize() + ".") from exc
+    except DealAgentUnavailable as exc:
+        raise HTTPException(503, "Couldn't get an answer just now. Please try again.") from exc
+    return await _conversation(session, q)
+
+
+@public.post("/{token}/offers/{message_id}/accept")
+async def accept_offer(
+    token: str,
+    message_id: str,
+    data: AcceptIn,
+    session: AsyncSession = Depends(get_session),
+    settings: Settings = Depends(get_settings),
+    paypal: PayPalClient = Depends(get_paypal),
+) -> dict[str, object]:
+    """Accept a negotiated offer: the quote becomes the next version, then the deposit."""
+    q = await _quote_or_404(token, session)
+    today = _today().date()
+    if not data.email and not q.client_email:
+        raise HTTPException(422, "Add your email so PayPal can send the deposit request.")
+    try:
+        await negotiator.apply_offer(session, q, message_id, today=today)
+        await quotes.accept(session, paypal, q, data, today=today)
+    except (negotiator.OfferUnavailable, negotiator.NegotiationClosed, quotes.QuoteClosed) as exc:
+        raise HTTPException(409, str(exc).capitalize() + ".") from exc
+    except PayPalError as exc:
+        raise HTTPException(502, exc.human()) from exc
+    return await _status(session, q, settings)
 
 
 async def _quote_or_404(token: str, session: AsyncSession) -> Quote:
@@ -133,6 +343,10 @@ async def quote_page(
             "deposit": display(deposit, q.currency),
             "balance": display(q.total - deposit, q.currency),
             "deposit_pct": plain(q.deposit_pct),
+            "discount_pct": plain(q.labour_discount_pct),
+            "discount": display(quotes.list_total(q) - q.total, q.currency),
+            "has_discount": quotes.list_total(q) > q.total,
+            "owner": negotiator.first_name(ws) if ws else "the owner",
             "has_deposit": deposit > 0,
             "initial": await _status(session, q, settings),
         },
