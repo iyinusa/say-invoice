@@ -52,7 +52,22 @@ class Settings(BaseSettings):
     google_api_key: str = ""
     vertex_project: str = ""
     vertex_location: str = "us-central1"
-    gemini_model: str = "gemini-2.5-flash"
+    # Chosen by scripts/eval_parser.py: 100% of text and 92% of audio cards fully
+    # right at ~2s. Thinking levels are per model: gemini-3.8-flash rejects "minimal".
+    gemini_model: str = "gemini-3.5-flash"
+    # minimal | low | medium | high; empty keeps the model's default. Lower is faster.
+    gemini_thinking_level: str = "minimal"
+    # One parse is one Gemini call; past this we retry once, then offer "type instead".
+    parse_timeout_s: float = 25.0
+    # Gemini takes inline audio up to ~20 MB per request; a spoken job is far smaller.
+    max_audio_bytes: int = 10 * 1024 * 1024
+
+    # Until onboarding exists, the first workspace is created from these.
+    default_currency: str = "GBP"
+    business_name: str = "Dave's Plumbing"
+    owner_name: str = "Dave Mason"
+    # Days until an invoice is due when no date was said; 0 means due on receipt.
+    default_due_days: int = 7
 
     @field_validator("database_url")
     @classmethod
@@ -76,6 +91,10 @@ class Settings(BaseSettings):
     @property
     def paypal_configured(self) -> bool:
         return bool(self.paypal_client_id and self.paypal_client_secret)
+
+    @property
+    def gemini_configured(self) -> bool:
+        return bool(self.google_api_key or self.vertex_project)
 
     def apply_google_env(self) -> None:
         """Expose Gemini credentials through the env vars google-genai / ADK read.

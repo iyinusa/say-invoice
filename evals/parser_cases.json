@@ -1,0 +1,232 @@
+{
+  "_about": "Parser accuracy set. Each case is said (or typed) to /api/parse with today = Wednesday 2026-11-04 and workspace currency GBP. `expect` lists only the fields that case checks. Items are [quantity, unit_price, is_material], with null meaning 'don't check'. `voice` is the speaking direction used by scripts/make_eval_audio.py.",
+  "today": "2026-11-04",
+  "default_currency": "GBP",
+  "cases": [
+    {
+      "id": "kennedy-boiler",
+      "say": "Fixed Mr Kennedy's boiler, 2 hours at £60, plus £25 for a valve, email kennedy@example.com",
+      "voice": "a London plumber, matter-of-fact, slightly hurried",
+      "expect": {
+        "mode": "invoice", "client_name": "Mr Kennedy", "client_email": "kennedy@example.com",
+        "currency": "GBP", "items": [[2, 60, false], [1, 25, true]], "subtotal": "145.00",
+        "due_date": null, "missing": [], "ready": true
+      }
+    },
+    {
+      "id": "patel-tap-quote",
+      "say": "Quote for Mrs Patel, replace the kitchen tap, ninety pounds labour plus about forty for parts, thirty percent deposit",
+      "voice": "a Birmingham plumber, friendly",
+      "expect": {
+        "mode": "quote", "client_name": "Mrs Patel", "currency": "GBP",
+        "items": [[1, 90, false], [1, 40, true]], "subtotal": "130.00",
+        "deposit_pct": "30", "deposit_amount": "39.00", "missing": [], "ready": true
+      }
+    },
+    {
+      "id": "jones-clean-friday",
+      "say": "Erm, deep clean for Sarah Jones, flat rate a hundred and twenty pounds, due Friday",
+      "voice": "a Welsh cleaner, chatty, with hesitations",
+      "expect": {
+        "mode": "invoice", "client_name": "Sarah Jones", "items": [[1, 120, false]],
+        "subtotal": "120.00", "due_date": "2026-11-06", "missing": ["client_email"], "ready": false
+      }
+    },
+    {
+      "id": "bella-walks",
+      "say": "Walked Bella five times this week, twelve quid a walk, owner's Kate, kate dot b at gmail dot com",
+      "voice": "a young Mancunian dog walker, outdoors, a bit breathless",
+      "expect": {
+        "client_name": "Kate", "client_email": "kate.b@gmail.com", "items": [[5, 12, false]],
+        "subtotal": "60.00", "ready": true
+      }
+    },
+    {
+      "id": "briggs-net30",
+      "say": "Invoice Tom Briggs, two days labour at one eighty a day and sixty quid of materials, email tom at toms builds dot co dot uk, net thirty",
+      "voice": "a gruff Scottish builder",
+      "expect": {
+        "client_name": "Tom Briggs", "client_email": "tom@tomsbuilds.co.uk",
+        "items": [[2, 180, false], [1, 60, true]], "subtotal": "420.00",
+        "due_date": "2026-12-04", "ready": true
+      }
+    },
+    {
+      "id": "henderson-gutters-usd",
+      "say": "Gutter clearing at the Hendersons', sixty-five bucks, due in two weeks, hendersons@example.com",
+      "voice": "an American handyman from Texas, relaxed",
+      "expect": {
+        "currency": "USD", "client_email": "hendersons@example.com", "items": [[1, 65, false]],
+        "subtotal": "65.00", "due_date": "2026-11-18", "ready": true
+      }
+    },
+    {
+      "id": "okafor-garden-no-price",
+      "say": "Garden tidy for Mr Okafor, three hours at twenty-five euros, plus green waste disposal, okafor@example.ie",
+      "voice": "an Irish gardener, cheerful",
+      "expect": {
+        "currency": "EUR", "client_email": "okafor@example.ie",
+        "items": [[3, 25, false], [1, 0, null]], "missing": ["items.1.unit_price"], "ready": false
+      }
+    },
+    {
+      "id": "grant-paint-estimate",
+      "say": "Can you do me an estimate for Lisa Grant, repaint the hallway and landing, roughly four hundred all in, fifty quid deposit",
+      "voice": "a Liverpudlian decorator",
+      "expect": {
+        "mode": "quote", "client_name": "Lisa Grant", "items": [[1, 400, false]],
+        "subtotal": "400.00", "deposit_amount": "50.00", "deposit_pct": "12.50", "ready": true
+      }
+    },
+    {
+      "id": "bell-correction",
+      "say": "Replaced the extractor fan for Jim Bell, two hours at sixty, sorry, no, two and a half hours, jim.bell@example.com",
+      "voice": "an electrician from Leeds, correcting himself mid-sentence",
+      "expect": {
+        "client_email": "jim.bell@example.com", "items": [[2.5, 60, false]],
+        "subtotal": "150.00", "ready": true
+      }
+    },
+    {
+      "id": "lopez-spanish",
+      "say": "Factura para Carmen López, limpieza de oficina, cuatro horas a quince euros la hora, carmen.lopez@example.es",
+      "voice": "a cleaner from Madrid, speaking Spanish",
+      "expect": {
+        "language": "es", "currency": "EUR", "client_email": "carmen.lopez@example.es",
+        "items": [[4, 15, false]], "subtotal": "60.00", "ready": true
+      }
+    },
+    {
+      "id": "ward-honey-date",
+      "say": "Twenty jars of honey at six pounds each for Ben Ward, ben@example.com, due the thirtieth of November",
+      "voice": "a West Country market trader, slow and warm",
+      "expect": {
+        "client_email": "ben@example.com", "items": [[20, 6, null]], "subtotal": "120.00",
+        "due_date": "2026-11-30", "ready": true
+      }
+    },
+    {
+      "id": "ade-typed-tutor",
+      "say": "Mr Ade - tutoring 1.5 hrs @ $40/hr - ade@example.com",
+      "typed": true,
+      "expect": {
+        "currency": "USD", "client_email": "ade@example.com", "items": [[1.5, 40, false]],
+        "subtotal": "60.00", "ready": true
+      }
+    },
+    {
+      "id": "neill-electrics-ton",
+      "say": "Electrics for Gary Neill, call-out forty-five, then two hours at fifty-five, and a ton for the new consumer unit, gary.neill@example.com",
+      "voice": "an Essex electrician, fast",
+      "expect": {
+        "client_email": "gary.neill@example.com",
+        "items": [[1, 45, false], [2, 55, false], [1, 100, true]], "subtotal": "255.00", "ready": true
+      }
+    },
+    {
+      "id": "dubois-french",
+      "say": "Facture pour Madame Dubois, garde d'enfants, six heures à douze euros, paiement dans une semaine, dubois@example.fr",
+      "voice": "a childminder from Lyon, speaking French",
+      "expect": {
+        "language": "fr", "currency": "EUR", "client_email": "dubois@example.fr",
+        "items": [[6, 12, false]], "subtotal": "72.00", "due_date": "2026-11-11", "ready": true
+      }
+    },
+    {
+      "id": "sink-no-client",
+      "say": "Leak under the sink fixed, forty-five for the call-out and a twelve fifty washer",
+      "voice": "a tired plumber at the end of the day",
+      "expect": {
+        "items": [[1, 45, false], [1, 12.5, true]], "subtotal": "57.50",
+        "missing": ["client_email"], "ready": false
+      }
+    },
+    {
+      "id": "green-nothing-billable",
+      "say": "Just finished at Mrs Green's, I'll sort the bill out later",
+      "voice": "a cleaner, distracted, traffic in the background",
+      "expect": {"items": [], "missing": ["items", "client_email"], "ready": false}
+    },
+    {
+      "id": "fan-quote-no-client",
+      "say": "Quote for a new bathroom fan, a hundred and fifty fitted, twenty-five percent deposit",
+      "voice": "an electrician from Newcastle",
+      "expect": {
+        "mode": "quote", "items": [[1, 150, false]], "deposit_pct": "25",
+        "deposit_amount": "37.50", "missing": ["client_name"], "ready": false
+      }
+    },
+    {
+      "id": "chidi-naira",
+      "say": "Invoice Chidi for generator servicing, fifteen thousand naira, chidi@example.ng",
+      "voice": "a Nigerian mechanic from Lagos",
+      "expect": {
+        "currency": "NGN", "client_email": "chidi@example.ng", "items": [[1, 15000, false]],
+        "missing": [], "ready": false
+      }
+    },
+    {
+      "id": "ahmed-tap-materials",
+      "say": "Fitted a new kitchen tap for Mrs Ahmed, an hour and a half labour at forty-eight pound an hour, the tap was eighty-five, and two flexi hoses at six fifty each, ahmed@example.com",
+      "voice": "a plumber from Bradford",
+      "expect": {
+        "client_email": "ahmed@example.com",
+        "items": [[1.5, 48, false], [1, 85, true], [2, 6.5, true]], "subtotal": "170.00", "ready": true
+      }
+    },
+    {
+      "id": "priya-cupcakes-today",
+      "say": "Right so, uh, the cake order for Priya, thirty cupcakes at two fifty each, she's priya.k@example.com, pay today",
+      "voice": "a home baker at a busy market stall",
+      "expect": {
+        "client_email": "priya.k@example.com", "items": [[30, 2.5, null]], "subtotal": "75.00",
+        "due_date": "2026-11-04", "ready": true
+      }
+    },
+    {
+      "id": "dan-usd-monday",
+      "say": "Website fix for Dan, three hours at seventy dollars an hour, dan@example.com, due Monday",
+      "voice": "a freelance developer, casual",
+      "expect": {
+        "currency": "USD", "client_email": "dan@example.com", "items": [[3, 70, false]],
+        "subtotal": "210.00", "due_date": "2026-11-09", "ready": true
+      }
+    },
+    {
+      "id": "kowalski-polish",
+      "say": "Faktura dla pana Kowalskiego, malowanie pokoju, trzysta złotych, kowalski@example.pl",
+      "voice": "a painter from Warsaw, speaking Polish",
+      "expect": {
+        "language": "pl", "currency": "PLN", "client_email": "kowalski@example.pl",
+        "items": [[1, 300, false]], "subtotal": "300.00", "ready": true
+      }
+    },
+    {
+      "id": "shah-how-much",
+      "say": "How much would it be for Mr Shah, lawn mowing, twenty pounds a cut, four cuts this month, shah@example.com",
+      "voice": "a gardener from Leicester",
+      "expect": {
+        "mode": "quote", "client_email": "shah@example.com", "items": [[4, 20, false]],
+        "subtotal": "80.00", "ready": true
+      }
+    },
+    {
+      "id": "siobhan-spelled",
+      "say": "Invoice for Siobhan, that's S I O B H A N at example dot com, two hours ironing at fifteen an hour",
+      "voice": "a Glaswegian ironing service owner, spelling letters slowly",
+      "expect": {
+        "client_email": "siobhan@example.com", "items": [[2, 15, false]], "subtotal": "30.00",
+        "ready": true
+      }
+    },
+    {
+      "id": "lee-end-next-week",
+      "say": "Boiler service for Mr Lee, one fifty, lee@example.com, due end of next week",
+      "voice": "a heating engineer from Bristol",
+      "expect": {
+        "client_email": "lee@example.com", "items": [[1, 150, false]], "subtotal": "150.00",
+        "due_date": "2026-11-13", "ready": true
+      }
+    }
+  ]
+}

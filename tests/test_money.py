@@ -27,3 +27,12 @@ def test_subtotal_rounds_each_line_first() -> None:
 
 def test_percent_of() -> None:
     assert percent_of(Decimal("130"), 30, "GBP") == Decimal("39.00")
+
+
+def test_plain_never_uses_exponent_notation() -> None:
+    from app.money import plain
+
+    assert str(plain(Decimal("30.00"))) == "30"
+    assert str(plain(Decimal("100"))) == "100"
+    assert str(plain(Decimal("1.50"))) == "1.5"
+    assert str(plain(Decimal("0.25"))) == "0.25"

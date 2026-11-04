@@ -1,0 +1,2504 @@
+{
+  "summary": {
+    "model": "gemini-3.5-flash-lite-minimal",
+    "cases": 50,
+    "cards_correct": 44,
+    "errors": 0,
+    "fields": {
+      "mode": [
+        12,
+        12
+      ],
+      "client_name": [
+        12,
+        12
+      ],
+      "client_email": [
+        32,
+        38
+      ],
+      "currency": [
+        20,
+        20
+      ],
+      "language": [
+        6,
+        6
+      ],
+      "items": [
+        50,
+        50
+      ],
+      "subtotal": [
+        42,
+        42
+      ],
+      "due_date": [
+        18,
+        18
+      ],
+      "deposit_pct": [
+        6,
+        6
+      ],
+      "deposit_amount": [
+        6,
+        6
+      ],
+      "missing": [
+        16,
+        16
+      ],
+      "ready": [
+        50,
+        50
+      ]
+    },
+    "latency_p50_s": 1.72,
+    "latency_p95_s": 2.02
+  },
+  "runs": [
+    {
+      "id": "kennedy-boiler",
+      "source": "audio",
+      "latency_s": 1.898784249991877,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "client_email": true,
+        "currency": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Fix Mr Kennedy's boiler, 2 hours at 60 pounds, plus 25 pounds for a valve, email kennedy at example dot com",
+        "language": "en",
+        "client_name": "Mr Kennedy",
+        "client_email": "kennedy@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Boiler repair",
+            "description": "Labour",
+            "quantity": "2",
+            "unit_price": "60.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "120.00"
+          },
+          {
+            "name": "Valve",
+            "description": "Replacement valve",
+            "quantity": "1",
+            "unit_price": "25.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "25.00"
+          }
+        ],
+        "subtotal": "145.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "patel-tap-quote",
+      "source": "audio",
+      "latency_s": 1.9806027919985354,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "currency": true,
+        "items": true,
+        "subtotal": true,
+        "deposit_pct": true,
+        "deposit_amount": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": true,
+        "transcript": "Quote for Mrs Patel, replace the kitchen tap, 90 pounds labour plus about 40 for parts, 30% deposit",
+        "language": "en",
+        "client_name": "Mrs Patel",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Replace kitchen tap (labour)",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "90.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "90.00"
+          },
+          {
+            "name": "Parts",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "40.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": true,
+            "line_total": "40.00"
+          }
+        ],
+        "subtotal": "130.00",
+        "due_date": null,
+        "deposit_pct": "30",
+        "deposit_amount": "39.00",
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "items.1.unit_price"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "jones-clean-friday",
+      "source": "audio",
+      "latency_s": 1.8681168749753851,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Deep clean for Sarah Jones, flat rate 120 pounds, due Friday",
+        "language": "en",
+        "client_name": "Sarah Jones",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Deep clean",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "120.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "120.00"
+          }
+        ],
+        "subtotal": "120.00",
+        "due_date": "2026-11-06",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "client_email"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is Sarah Jones's email address?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "bella-walks",
+      "source": "audio",
+      "latency_s": 1.8796428329951596,
+      "error": "",
+      "fields": {
+        "client_name": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Walked Bella five times this week, twelve quid a walk, owner is Kate, kate.b@gmail.com",
+        "language": "en",
+        "client_name": "Kate",
+        "client_email": "kate.b@gmail.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Dog walks",
+            "description": "Walked Bella five times this week",
+            "quantity": "5",
+            "unit_price": "12.00",
+            "unit": "items",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "60.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "briggs-net30",
+      "source": "audio",
+      "latency_s": 1.8810887500003446,
+      "error": "",
+      "fields": {
+        "client_name": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Invoice Tom Briggs, two days labour at 180 a day and 60 quid of materials, email Tom at tomsbuilds.co.uk, net 30",
+        "language": "en",
+        "client_name": "Tom Briggs",
+        "client_email": "tom@tomsbuilds.co.uk",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Labour",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "180.00",
+            "unit": "items",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "360.00"
+          },
+          {
+            "name": "Materials",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "60.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "420.00",
+        "due_date": "2026-12-04",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "henderson-gutters-usd",
+      "source": "audio",
+      "latency_s": 1.5708627499989234,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Gutter clearing at the Hendersons, 65 bucks, due in two weeks. Hendersons at example.com",
+        "language": "en",
+        "client_name": "the Hendersons",
+        "client_email": "hendersons@example.com",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Gutter clearing",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "65.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "65.00"
+          }
+        ],
+        "subtotal": "65.00",
+        "due_date": "2026-11-18",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "okafor-garden-no-price",
+      "source": "audio",
+      "latency_s": 1.7410830830049235,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Garden tidy for Mr Okafor, 3 hours at 25 euros plus green waste disposal. Okafor at example dot ie",
+        "language": "en",
+        "client_name": "Mr Okafor",
+        "client_email": "okafor@example.ie",
+        "currency": "EUR",
+        "items": [
+          {
+            "name": "Garden tidy",
+            "description": "",
+            "quantity": "3",
+            "unit_price": "25.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "75.00"
+          },
+          {
+            "name": "Green waste disposal",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "0.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "0.00"
+          }
+        ],
+        "subtotal": "75.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "items.1.unit_price"
+        ],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "What is the price for the green waste disposal?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "grant-paint-estimate",
+      "source": "audio",
+      "latency_s": 1.6428778329864144,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "items": true,
+        "subtotal": true,
+        "deposit_amount": true,
+        "deposit_pct": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": true,
+        "transcript": "Can you do me an estimate for Lisa Grant? Repaint the hallway in London, roughly 400 all in, 50 quid deposit.",
+        "language": "en",
+        "client_name": "Lisa Grant",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Repaint hallway",
+            "description": "Repaint the hallway in London",
+            "quantity": "1",
+            "unit_price": "400.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": true,
+            "line_total": "400.00"
+          }
+        ],
+        "subtotal": "400.00",
+        "due_date": null,
+        "deposit_pct": "12.50",
+        "deposit_amount": "50.00",
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "items.0.unit_price"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "bell-correction",
+      "source": "audio",
+      "latency_s": 1.6015150409948546,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Replace the extractor fan for Jim. Two hours at 60. Sorry, not two and a half hours, Jim. jim.bell@example.com",
+        "language": "en",
+        "client_name": "Jim",
+        "client_email": "jim.bell@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Extractor fan replacement",
+            "description": "",
+            "quantity": "2.5",
+            "unit_price": "60.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "150.00"
+          }
+        ],
+        "subtotal": "150.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "lopez-spanish",
+      "source": "audio",
+      "latency_s": 1.7281012909952551,
+      "error": "",
+      "fields": {
+        "language": true,
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Factura para Carmen López, limpieza de oficina, 4 horas a 15 euros la hora, carmen.lopez@example.es",
+        "language": "es",
+        "client_name": "Carmen López",
+        "client_email": "carmen.lopez@example.es",
+        "currency": "EUR",
+        "items": [
+          {
+            "name": "Limpieza de oficina",
+            "description": "",
+            "quantity": "4",
+            "unit_price": "15.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "60.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "ward-honey-date",
+      "source": "audio",
+      "latency_s": 1.7518325420096517,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "20 jars of honey at 6 pounds each for Ben Ward, ben at example.com, due the 30th of November",
+        "language": "en",
+        "client_name": "Ben Ward",
+        "client_email": "ben@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Honey (jar)",
+            "description": "",
+            "quantity": "20",
+            "unit_price": "6.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "120.00"
+          }
+        ],
+        "subtotal": "120.00",
+        "due_date": "2026-11-30",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "ade-typed-tutor",
+      "source": "text",
+      "latency_s": 1.2918669590144418,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Mr Ade - tutoring 1.5 hrs @ $40/hr - ade@example.com",
+        "language": "en",
+        "client_name": "Mr Ade",
+        "client_email": "ade@example.com",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Tutoring",
+            "description": "",
+            "quantity": "1.5",
+            "unit_price": "40.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "60.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "neill-electrics-ton",
+      "source": "audio",
+      "latency_s": 2.0134892909845803,
+      "error": "",
+      "fields": {
+        "client_email": false,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Electrics for Gary Neil, call out 45, then 2 hours at 55, and a ten for the new consumer unit, gary.neil@example.com",
+        "language": "en",
+        "client_name": "Gary Neil",
+        "client_email": "gary.neil@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Call-out",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "45.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "45.00"
+          },
+          {
+            "name": "Labour",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "55.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "110.00"
+          },
+          {
+            "name": "Consumer unit",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "100.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "100.00"
+          }
+        ],
+        "subtotal": "255.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "dubois-french",
+      "source": "audio",
+      "latency_s": 1.7329985830001533,
+      "error": "",
+      "fields": {
+        "language": true,
+        "currency": true,
+        "client_email": false,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Facture pour madame Dubois, garde d'enfants, 6 heures à 12 euros, paiement dans une semaine, dubois@exemple.fr",
+        "language": "fr",
+        "client_name": "Madame Dubois",
+        "client_email": "dubois@exemple.fr",
+        "currency": "EUR",
+        "items": [
+          {
+            "name": "Garde d'enfants",
+            "description": "",
+            "quantity": "6",
+            "unit_price": "12.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "72.00"
+          }
+        ],
+        "subtotal": "72.00",
+        "due_date": "2026-11-11",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "Paiement dans une semaine",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "sink-no-client",
+      "source": "audio",
+      "latency_s": 1.7313066670030821,
+      "error": "",
+      "fields": {
+        "items": true,
+        "subtotal": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Leak under the sink fixed, 45 for the call-out and a 12.50 washer.",
+        "language": "en",
+        "client_name": "",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Call-out",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "45.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "45.00"
+          },
+          {
+            "name": "Washer",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "12.50",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "12.50"
+          }
+        ],
+        "subtotal": "57.50",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "client_email"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is the client's email address?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "green-nothing-billable",
+      "source": "audio",
+      "latency_s": 1.5514098749845289,
+      "error": "",
+      "fields": {
+        "items": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Just finished it Mrs Greens. I'll sort the bill out later.",
+        "language": "en",
+        "client_name": "Mrs Greens",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [],
+        "subtotal": "0.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "items",
+          "client_email"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What parts and labour should I add to Mrs Greens's invoice?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "fan-quote-no-client",
+      "source": "audio",
+      "latency_s": 1.6301968329935335,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "items": true,
+        "deposit_pct": true,
+        "deposit_amount": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": false,
+        "transcript": "Quote for a new bathroom fan, 150 fitted, 25% deposit",
+        "language": "en",
+        "client_name": "",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "New bathroom fan (supplied and fitted)",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "150.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "150.00"
+          }
+        ],
+        "subtotal": "150.00",
+        "due_date": null,
+        "deposit_pct": "25",
+        "deposit_amount": "37.50",
+        "notes": "",
+        "missing_fields": [
+          "client_name"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is the client's name or email address?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "chidi-naira",
+      "source": "audio",
+      "latency_s": 1.6068925420113374,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Invoice Chidi for generator servicing, 15000 naira, chidi at example dot ng",
+        "language": "en",
+        "client_name": "Chidi",
+        "client_email": "chidi@example.ng",
+        "currency": "NGN",
+        "items": [
+          {
+            "name": "Generator servicing",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "15000.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "15000.00"
+          }
+        ],
+        "subtotal": "15000.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email",
+          "currency"
+        ],
+        "follow_up_question": "",
+        "warnings": [
+          "PayPal can't invoice in NGN. Pick another currency to send it."
+        ]
+      }
+    },
+    {
+      "id": "ahmed-tap-materials",
+      "source": "audio",
+      "latency_s": 1.72794170898851,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Fitted a new kitchen tap for Mrs Ahmed. An hour and a half labour at 48 pound an hour. The tap was 85 and two flexios at 6.50 each. Ahmed at example.com.",
+        "language": "en",
+        "client_name": "Mrs Ahmed",
+        "client_email": "ahmed@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Kitchen tap installation",
+            "description": "Labour",
+            "quantity": "1.5",
+            "unit_price": "48.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "72.00"
+          },
+          {
+            "name": "Kitchen tap",
+            "description": "Materials",
+            "quantity": "1",
+            "unit_price": "85.00",
+            "unit": "fixed",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "85.00"
+          },
+          {
+            "name": "Flexios",
+            "description": "Materials",
+            "quantity": "2",
+            "unit_price": "6.50",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "13.00"
+          }
+        ],
+        "subtotal": "170.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "priya-cupcakes-today",
+      "source": "audio",
+      "latency_s": 1.4840262919897214,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Right, so, uh, the cake order for Priya, 30 cupcakes at 2.50 each. She's priya.k@example.com. Pay today.",
+        "language": "en",
+        "client_name": "Priya",
+        "client_email": "priya.k@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Cupcakes",
+            "description": "",
+            "quantity": "30",
+            "unit_price": "2.50",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "75.00"
+          }
+        ],
+        "subtotal": "75.00",
+        "due_date": "2026-11-04",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "dan-usd-monday",
+      "source": "audio",
+      "latency_s": 1.6360965420026332,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Website fix for Dan, 3 hours at $70 an hour, dan at example.com, due Monday",
+        "language": "en",
+        "client_name": "Dan",
+        "client_email": "dan@example.com",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Website fix",
+            "description": "",
+            "quantity": "3",
+            "unit_price": "70.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "210.00"
+          }
+        ],
+        "subtotal": "210.00",
+        "due_date": "2026-11-09",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "kowalski-polish",
+      "source": "audio",
+      "latency_s": 1.8712632499809843,
+      "error": "",
+      "fields": {
+        "language": true,
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Faktura dla pana Kowalskiego, malowanie pokoju 300 złotych, Kowalski malpa example.pl",
+        "language": "pl",
+        "client_name": "pan Kowalski",
+        "client_email": "kowalski@example.pl",
+        "currency": "PLN",
+        "items": [
+          {
+            "name": "Malowanie pokoju",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "300.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "300.00"
+          }
+        ],
+        "subtotal": "300.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "shah-how-much",
+      "source": "audio",
+      "latency_s": 1.5846092080173548,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_email": false,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": true,
+        "transcript": "How much would it be for Mr Shaw, lawn mowing, 20 pounds a cut, four cuts this month, shaw at example.com.",
+        "language": "en",
+        "client_name": "Mr Shaw",
+        "client_email": "shaw@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Lawn mowing",
+            "description": "",
+            "quantity": "4",
+            "unit_price": "20.00",
+            "unit": "items",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "80.00"
+          }
+        ],
+        "subtotal": "80.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "siobhan-spelled",
+      "source": "audio",
+      "latency_s": 1.8450199170038104,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Invoice for Siobhan, that's S-I-O-B-H-A-N at example.com. Two hours ironing at 15 an hour.",
+        "language": "en",
+        "client_name": "Siobhan",
+        "client_email": "siobhan@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Ironing",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "15.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "30.00"
+          }
+        ],
+        "subtotal": "30.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "lee-end-next-week",
+      "source": "audio",
+      "latency_s": 1.5576329159957822,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Boiler service for Mr Lee, 150, lee@example.com, due end of next week",
+        "language": "en",
+        "client_name": "Mr Lee",
+        "client_email": "lee@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Boiler service",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "150.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "150.00"
+          }
+        ],
+        "subtotal": "150.00",
+        "due_date": "2026-11-13",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "kennedy-boiler",
+      "source": "audio",
+      "latency_s": 1.636291542003164,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "client_email": true,
+        "currency": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Fix Mr Kennedy's boiler, two hours at £60, plus £25 for a valve, email kennedy@example.com",
+        "language": "en",
+        "client_name": "Mr Kennedy",
+        "client_email": "kennedy@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Boiler repair",
+            "description": "Labour",
+            "quantity": "2",
+            "unit_price": "60.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "120.00"
+          },
+          {
+            "name": "Valve",
+            "description": "Replacement valve",
+            "quantity": "1",
+            "unit_price": "25.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "25.00"
+          }
+        ],
+        "subtotal": "145.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "patel-tap-quote",
+      "source": "audio",
+      "latency_s": 2.036871207994409,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "currency": true,
+        "items": true,
+        "subtotal": true,
+        "deposit_pct": true,
+        "deposit_amount": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": true,
+        "transcript": "Quote for Mrs Patel, replace the kitchen tap, 90 pounds labour plus about 40 for parts, 30% deposit",
+        "language": "en",
+        "client_name": "Mrs Patel",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Replace kitchen tap (labour)",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "90.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "90.00"
+          },
+          {
+            "name": "Parts",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "40.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": true,
+            "line_total": "40.00"
+          }
+        ],
+        "subtotal": "130.00",
+        "due_date": null,
+        "deposit_pct": "30",
+        "deposit_amount": "39.00",
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "items.1.unit_price"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "jones-clean-friday",
+      "source": "audio",
+      "latency_s": 2.7249644589901436,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Deep clean for Sarah Jones, flat rate 120 pounds, due Friday",
+        "language": "en",
+        "client_name": "Sarah Jones",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Deep clean",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "120.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "120.00"
+          }
+        ],
+        "subtotal": "120.00",
+        "due_date": "2026-11-06",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "client_email"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is Sarah Jones's email address?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "bella-walks",
+      "source": "audio",
+      "latency_s": 1.5140727499965578,
+      "error": "",
+      "fields": {
+        "client_name": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Walked Bella five times this week, twelve quid a walk, owner is Kate, kate.b@gmail.com",
+        "language": "en",
+        "client_name": "Kate",
+        "client_email": "kate.b@gmail.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Dog walks (Bella)",
+            "description": "",
+            "quantity": "5",
+            "unit_price": "12.00",
+            "unit": "items",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "60.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "briggs-net30",
+      "source": "audio",
+      "latency_s": 1.6022582500008866,
+      "error": "",
+      "fields": {
+        "client_name": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Invoice Tom Briggs, two days labour at 180 a day and 60 quid of materials, email tom at tomsbuilds.co.uk, net 30",
+        "language": "en",
+        "client_name": "Tom Briggs",
+        "client_email": "tom@tomsbuilds.co.uk",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Labour",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "180.00",
+            "unit": "items",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "360.00"
+          },
+          {
+            "name": "Materials",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "60.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "420.00",
+        "due_date": "2026-12-04",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "henderson-gutters-usd",
+      "source": "audio",
+      "latency_s": 1.6983482920040842,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Gutter cleaning at the Hendersons, 65 bucks, due in 2 weeks, Hendersons at example.com",
+        "language": "en",
+        "client_name": "the Hendersons",
+        "client_email": "hendersons@example.com",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Gutter cleaning",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "65.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "65.00"
+          }
+        ],
+        "subtotal": "65.00",
+        "due_date": "2026-11-18",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "okafor-garden-no-price",
+      "source": "audio",
+      "latency_s": 1.8474759999953676,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Garden tidy for Mr Okafor, 3 hours at 25 euros, plus green waste disposal, okafor at example dot ie",
+        "language": "en",
+        "client_name": "Mr Okafor",
+        "client_email": "okafor@example.ie",
+        "currency": "EUR",
+        "items": [
+          {
+            "name": "Garden tidy",
+            "description": "",
+            "quantity": "3",
+            "unit_price": "25.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "75.00"
+          },
+          {
+            "name": "Green waste disposal",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "0.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "0.00"
+          }
+        ],
+        "subtotal": "75.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "items.1.unit_price"
+        ],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "What is the price for the green waste disposal?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "grant-paint-estimate",
+      "source": "audio",
+      "latency_s": 1.636371667002095,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_name": true,
+        "items": true,
+        "subtotal": true,
+        "deposit_amount": true,
+        "deposit_pct": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": true,
+        "transcript": "Can you do me an estimate for Lisa Grant? Repaint the hallway in London, roughly 400 all in, 50 quid deposit",
+        "language": "en",
+        "client_name": "Lisa Grant",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Repaint hallway",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "400.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": true,
+            "line_total": "400.00"
+          }
+        ],
+        "subtotal": "400.00",
+        "due_date": null,
+        "deposit_pct": "12.50",
+        "deposit_amount": "50.00",
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "items.0.unit_price"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "bell-correction",
+      "source": "audio",
+      "latency_s": 1.789831417001551,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Replace the extractor fan for Jim. Two hours at 60. Sorry, not two and a half hours, Jim. Jim.bell@example.com",
+        "language": "en",
+        "client_name": "Jim",
+        "client_email": "jim.bell@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Extractor fan replacement",
+            "description": "",
+            "quantity": "2.5",
+            "unit_price": "60.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "150.00"
+          }
+        ],
+        "subtotal": "150.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "lopez-spanish",
+      "source": "audio",
+      "latency_s": 1.9461807920015417,
+      "error": "",
+      "fields": {
+        "language": true,
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Factura para Carmen López, limpieza de oficina, 4 horas a 15 euros la hora, carmen.lopez@example.es",
+        "language": "es",
+        "client_name": "Carmen López",
+        "client_email": "carmen.lopez@example.es",
+        "currency": "EUR",
+        "items": [
+          {
+            "name": "Limpieza de oficina",
+            "description": "",
+            "quantity": "4",
+            "unit_price": "15.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "60.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "ward-honey-date",
+      "source": "audio",
+      "latency_s": 1.7450240409816615,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "20 jars of honey at 6 pounds each for Ben, ben@example.com, due the 30th of November",
+        "language": "en",
+        "client_name": "Ben",
+        "client_email": "ben@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Honey (jar)",
+            "description": "",
+            "quantity": "20",
+            "unit_price": "6.00",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "120.00"
+          }
+        ],
+        "subtotal": "120.00",
+        "due_date": "2026-11-30",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "ade-typed-tutor",
+      "source": "text",
+      "latency_s": 1.1565678750048392,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Mr Ade - tutoring 1.5 hrs @ $40/hr - ade@example.com",
+        "language": "en",
+        "client_name": "Mr Ade",
+        "client_email": "ade@example.com",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Tutoring",
+            "description": "",
+            "quantity": "1.5",
+            "unit_price": "40.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "60.00"
+          }
+        ],
+        "subtotal": "60.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "neill-electrics-ton",
+      "source": "audio",
+      "latency_s": 1.9479092500114348,
+      "error": "",
+      "fields": {
+        "client_email": false,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Electrics for Gary Neil, call out forty-five, then two hours at fifty-five, and a ton for the new consumer unit, gary.neil at example.com",
+        "language": "en",
+        "client_name": "Gary Neil",
+        "client_email": "gary.neil@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Call-out",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "45.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "45.00"
+          },
+          {
+            "name": "Labour",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "55.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "110.00"
+          },
+          {
+            "name": "Consumer unit",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "100.00",
+            "unit": "fixed",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "100.00"
+          }
+        ],
+        "subtotal": "255.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "dubois-french",
+      "source": "audio",
+      "latency_s": 1.7433299999975134,
+      "error": "",
+      "fields": {
+        "language": true,
+        "currency": true,
+        "client_email": false,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Facture pour madame Dubois, garde d'enfants, 6 heures à 12 euros, paiement dans une semaine, dubois@exemple.fr",
+        "language": "fr",
+        "client_name": "Madame Dubois",
+        "client_email": "dubois@exemple.fr",
+        "currency": "EUR",
+        "items": [
+          {
+            "name": "Garde d'enfants",
+            "description": "",
+            "quantity": "6",
+            "unit_price": "12.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "72.00"
+          }
+        ],
+        "subtotal": "72.00",
+        "due_date": "2026-11-11",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "Paiement dans une semaine",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "sink-no-client",
+      "source": "audio",
+      "latency_s": 1.718141707999166,
+      "error": "",
+      "fields": {
+        "items": true,
+        "subtotal": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Leak under the sink fixed. 45 for the call-out and a 12.50 washer.",
+        "language": "en",
+        "client_name": "",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Call-out",
+            "description": "Leak under the sink call-out",
+            "quantity": "1",
+            "unit_price": "45.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "45.00"
+          },
+          {
+            "name": "Washer",
+            "description": "Replacement washer",
+            "quantity": "1",
+            "unit_price": "12.50",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "12.50"
+          }
+        ],
+        "subtotal": "57.50",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "client_email"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is the client's email address?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "green-nothing-billable",
+      "source": "audio",
+      "latency_s": 1.520663166011218,
+      "error": "",
+      "fields": {
+        "items": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Just finished it Mrs Greens. I'll sort the bill out later.",
+        "language": "en",
+        "client_name": "Mrs Greens",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [],
+        "subtotal": "0.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [
+          "items",
+          "client_email"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is Mrs Greens's email address and what items should be on the bill?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "fan-quote-no-client",
+      "source": "audio",
+      "latency_s": 1.4773941659950651,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "items": true,
+        "deposit_pct": true,
+        "deposit_amount": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": false,
+        "transcript": "Quote for a new bathroom fan, 150 fitted, 25% deposit",
+        "language": "en",
+        "client_name": "",
+        "client_email": "",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "New bathroom fan (supplied and fitted)",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "150.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "150.00"
+          }
+        ],
+        "subtotal": "150.00",
+        "due_date": null,
+        "deposit_pct": "25",
+        "deposit_amount": "37.50",
+        "notes": "",
+        "missing_fields": [
+          "client_name"
+        ],
+        "uncertain_fields": [],
+        "follow_up_question": "What is the client's name or email?",
+        "warnings": []
+      }
+    },
+    {
+      "id": "chidi-naira",
+      "source": "audio",
+      "latency_s": 1.6196386660158169,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "missing": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": false,
+        "transcript": "Invoice Chidi for generator servicing, 15,000 Naira, chidi at example dot ng",
+        "language": "en",
+        "client_name": "Chidi",
+        "client_email": "chidi@example.ng",
+        "currency": "NGN",
+        "items": [
+          {
+            "name": "Generator servicing",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "15000.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "15000.00"
+          }
+        ],
+        "subtotal": "15000.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email",
+          "currency"
+        ],
+        "follow_up_question": "",
+        "warnings": [
+          "PayPal can't invoice in NGN. Pick another currency to send it."
+        ]
+      }
+    },
+    {
+      "id": "ahmed-tap-materials",
+      "source": "audio",
+      "latency_s": 2.0212195829954,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Fitted a new kitchen tap for Mrs Ahmed, an hour and a half labour at 48 pound an hour, the tap was 85, and two flexios at 6.50 each. ahmed@example.com",
+        "language": "en",
+        "client_name": "Mrs Ahmed",
+        "client_email": "ahmed@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Kitchen tap installation (labour)",
+            "description": "",
+            "quantity": "1.5",
+            "unit_price": "48.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "72.00"
+          },
+          {
+            "name": "Kitchen tap",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "85.00",
+            "unit": "fixed",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "85.00"
+          },
+          {
+            "name": "Flexios",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "6.50",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "13.00"
+          }
+        ],
+        "subtotal": "170.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "priya-cupcakes-today",
+      "source": "audio",
+      "latency_s": 1.8566542920016218,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Right, so uh the cake order for Priya, 30 cupcakes at 2.50 each. She's priya.k at example.com. Pay today.",
+        "language": "en",
+        "client_name": "Priya",
+        "client_email": "priya.k@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Cupcakes",
+            "description": "",
+            "quantity": "30",
+            "unit_price": "2.50",
+            "unit": "items",
+            "is_material": true,
+            "approximate": false,
+            "line_total": "75.00"
+          }
+        ],
+        "subtotal": "75.00",
+        "due_date": "2026-11-04",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "dan-usd-monday",
+      "source": "audio",
+      "latency_s": 1.6597942920052446,
+      "error": "",
+      "fields": {
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Website fix for Dan, 3 hours at $70 an hour, dan at example dot com, due Monday",
+        "language": "en",
+        "client_name": "Dan",
+        "client_email": "dan@example.com",
+        "currency": "USD",
+        "items": [
+          {
+            "name": "Website fix",
+            "description": "",
+            "quantity": "3",
+            "unit_price": "70.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "210.00"
+          }
+        ],
+        "subtotal": "210.00",
+        "due_date": "2026-11-09",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "kowalski-polish",
+      "source": "audio",
+      "latency_s": 1.8581818329985254,
+      "error": "",
+      "fields": {
+        "language": true,
+        "currency": true,
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Factura dla pana Kowalskiego, malowanie pokoju trzysta złotych, Kowalski malpa example.pl",
+        "language": "pl",
+        "client_name": "pan Kowalski",
+        "client_email": "kowalski@example.pl",
+        "currency": "PLN",
+        "items": [
+          {
+            "name": "Malowanie pokoju",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "300.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "300.00"
+          }
+        ],
+        "subtotal": "300.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "shah-how-much",
+      "source": "audio",
+      "latency_s": 1.5311716659925878,
+      "error": "",
+      "fields": {
+        "mode": true,
+        "client_email": false,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "quote",
+        "ready": true,
+        "transcript": "How much would it be for Mr Shaw? Lawn mowing, 20 pounds a cut, four cuts this month, shaw@example.com",
+        "language": "en",
+        "client_name": "Mr Shaw",
+        "client_email": "shaw@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Lawn mowing",
+            "description": "",
+            "quantity": "4",
+            "unit_price": "20.00",
+            "unit": "items",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "80.00"
+          }
+        ],
+        "subtotal": "80.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "siobhan-spelled",
+      "source": "audio",
+      "latency_s": 1.605647249991307,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Invoice for Siobhan, that's S-I-O-B-H-A-N at example.com. Two hours ironin' at fifteen an hour.",
+        "language": "en",
+        "client_name": "Siobhan",
+        "client_email": "siobhan@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Ironing",
+            "description": "",
+            "quantity": "2",
+            "unit_price": "15.00",
+            "unit": "hours",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "30.00"
+          }
+        ],
+        "subtotal": "30.00",
+        "due_date": null,
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    },
+    {
+      "id": "lee-end-next-week",
+      "source": "audio",
+      "latency_s": 1.4921733330120333,
+      "error": "",
+      "fields": {
+        "client_email": true,
+        "items": true,
+        "subtotal": true,
+        "due_date": true,
+        "ready": true
+      },
+      "card": {
+        "mode": "invoice",
+        "ready": true,
+        "transcript": "Boiler service for Mr Lee, 150, lee@example.com, due end of next week",
+        "language": "en",
+        "client_name": "Mr Lee",
+        "client_email": "lee@example.com",
+        "currency": "GBP",
+        "items": [
+          {
+            "name": "Boiler service",
+            "description": "",
+            "quantity": "1",
+            "unit_price": "150.00",
+            "unit": "fixed",
+            "is_material": false,
+            "approximate": false,
+            "line_total": "150.00"
+          }
+        ],
+        "subtotal": "150.00",
+        "due_date": "2026-11-13",
+        "deposit_pct": null,
+        "deposit_amount": null,
+        "notes": "",
+        "missing_fields": [],
+        "uncertain_fields": [
+          "client_email"
+        ],
+        "follow_up_question": "",
+        "warnings": []
+      }
+    }
+  ]
+}

@@ -81,3 +81,8 @@ def test_single_word_name() -> None:
 def test_rejects_empty_or_non_positive(overrides: dict[str, object]) -> None:
     with pytest.raises(ValueError):
         build_invoice_body(_draft(**overrides))
+
+
+def test_round_quantities_reach_paypal_without_exponents() -> None:
+    body = build_invoice_body(_draft(items=[Item("Cupcakes", Decimal("30.00"), Decimal("2.5"))]))
+    assert body["items"][0]["quantity"] == "30"

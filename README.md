@@ -17,7 +17,7 @@ uv run alembic upgrade head
 uv run uvicorn app.main:app --reload
 ```
 
-Open http://localhost:8000/healthz.
+Open http://localhost:8000 on your phone or laptop. Tap the mic and describe a job, or type it. Check the card, then tap **Send**. Sending needs the PayPal sandbox values below; reading a job only needs the Gemini key.
 
 ### PayPal sandbox setup
 
@@ -38,6 +38,33 @@ uv run python -m scripts.spike_adk_mcp
 
 # 3: voice note -> structured job, one multimodal Gemini call
 uv run python -m scripts.spike_gemini_audio path/to/voice-note.m4a
+```
+
+## Parser accuracy
+
+The parser turns a voice note into a draft invoice or quote in one Gemini call. Code then prices every line, resolves the due date and decides what's missing: the model never does sums. We measure the whole thing end to end, scoring the card the tradesperson would see, with [`scripts/eval_parser.py`](scripts/eval_parser.py) on [25 cases](evals/parser_cases.json):
+
+- **Trades:** plumbers, cleaners, dog walkers, builders, tutors, market traders.
+- **Money:** £, $, € and PLN, plus slang ("a ton", "quid", "bucks").
+- **Languages:** Spanish, French and Polish.
+- **How people talk:** self-corrections and spelled-out emails.
+- **Dates:** "due Friday", "net thirty", "end of next week".
+- **Incomplete jobs:** a missing price or a missing client.
+- **Edge cases:** a currency PayPal can't invoice in.
+
+| `gemini-3.5-flash`, minimal thinking | Cards fully right | Items, prices, totals | Due dates | Deposits | Typical time |
+|---|---|---|---|---|---|
+| Typed text (25 cases × 2 runs) | **100%** (50/50) | 100% | 100% | 100% | 1.9 s |
+| Voice notes (25 × 2) | **92%** (46/50) | 100% | 100% | 100% | 2.7 s |
+
+All four voice misses are names that sound alike in an email address (Neill/Neil, Shah/Shaw), which no listener could resolve. That's why the app always highlights an email it heard, so the tradesperson can check it before sending.
+
+The voice notes in `evals/audio/` are synthetic: Gemini TTS reads each case in a regional accent, with background noise mixed in ([`scripts/make_eval_audio.py`](scripts/make_eval_audio.py)). Drop a real phone recording in with the same file name and the eval uses it instead.
+
+```bash
+uv run python -m scripts.eval_parser --repeat 2            # typed text
+uv run python -m scripts.eval_parser --repeat 2 --audio    # voice notes
+uv run python -m scripts.eval_parser --model gemini-3.5-flash --model gemini-3.5-flash-lite
 ```
 
 ## Tests

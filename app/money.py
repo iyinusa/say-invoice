@@ -36,5 +36,11 @@ def subtotal(lines: Iterable[tuple[Decimal | str, Decimal | str]], currency: str
     return sum((line_total(q, u, currency) for q, u in lines), start=to_money(0, currency))
 
 
+def plain(value: Decimal) -> Decimal:
+    """Drop trailing zeros without exponent notation: 30.00 -> 30, not 3E+1."""
+    n = value.normalize()
+    return n.quantize(Decimal(1)) if n == n.to_integral_value() else n
+
+
 def percent_of(amount: Decimal, pct: Decimal | int | str, currency: str) -> Decimal:
     return to_money(amount * Decimal(str(pct)) / Decimal(100), currency)

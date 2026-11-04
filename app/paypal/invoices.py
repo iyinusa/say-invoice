@@ -11,7 +11,7 @@ from datetime import date
 from decimal import Decimal
 from typing import Any, Literal
 
-from app.money import fmt, subtotal
+from app.money import fmt, plain, subtotal
 
 UnitOfMeasure = Literal["QUANTITY", "HOURS", "AMOUNT"]
 
@@ -111,7 +111,7 @@ def build_invoice_body(draft: InvoiceDraft) -> dict[str, Any]:
     for item in draft.items:
         entry: dict[str, Any] = {
             "name": item.name[:200],
-            "quantity": str(item.quantity.normalize()),
+            "quantity": str(plain(item.quantity)),
             "unit_amount": _money(item.unit_amount, cur),
             "unit_of_measure": item.unit_of_measure,
         }

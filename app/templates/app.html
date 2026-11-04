@@ -1,0 +1,198 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b6b46">
+  <title>SayInvoice</title>
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6b46'/%3E%3Cpath d='M16 19a3.5 3.5 0 0 0 3.5-3.5V9a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 16 19Zm6-4a6 6 0 0 1-12 0' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 21v4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="/static/app.css?v={{ v }}">
+  <script>
+    window.SAYINVOICE = {
+      currency: {{ currency | tojson }},
+      defaultDueDays: {{ default_due_days | tojson }},
+    };
+  </script>
+  <script defer src="/static/app.js?v={{ v }}"></script>
+  <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
+</head>
+<body>
+<main class="app" x-data="sayInvoice()" x-cloak>
+
+  <header class="topbar">
+    <span class="brand">Say<b>Invoice</b></span>
+    <span class="biz">{{ business_name }}</span>
+  </header>
+
+  <!-- ── 1. Record ─────────────────────────────────────────────── -->
+  <section class="screen record" x-show="screen === 'record'">
+    <h1>What did you do?</h1>
+    <p class="hint">Say the job, the price and who it's for.<br>
+      <span class="example">“Fixed Mr Kennedy's boiler, 2 hours at £60, plus £25 for a valve,
+        email kennedy@example.com”</span></p>
+
+    <button class="mic" :class="{ live: recording }" @click="toggleRecording('job')"
+            :aria-label="recording ? 'Stop recording' : 'Start recording'">
+      <svg viewBox="0 0 24 24" aria-hidden="true" x-show="!recording">
+        <path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/>
+        <path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/>
+      </svg>
+      <svg viewBox="0 0 24 24" aria-hidden="true" x-show="recording"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
+    </button>
+    <p class="mic-label" aria-live="polite"
+       x-text="recording ? `Listening… ${clock(seconds)} · tap to stop` : 'Tap to talk'"></p>
+
+    <div class="typed" x-show="typing">
+      <label for="job-text" class="sr-only">Describe the job</label>
+      <textarea id="job-text" x-ref="jobText" rows="4" x-model="typed" maxlength="2000"
+                placeholder="2 hours at £60 for Mr Kennedy's boiler, plus a £25 valve, kennedy@example.com"></textarea>
+      <button class="btn primary" :disabled="!typed.trim()" @click="parseTyped()">Read it</button>
+    </div>
+    <button class="link" x-show="!typing" @click="typing = true; $nextTick(() => $refs.jobText.focus())">
+      Or type it instead</button>
+
+    <p class="error" role="alert" x-show="error" x-text="error"></p>
+  </section>
+
+  <!-- ── 2. Reading ────────────────────────────────────────────── -->
+  <section class="screen center" x-show="screen === 'reading'" aria-live="polite">
+    <div class="spinner" aria-hidden="true"></div>
+    <p class="big">Reading your job…</p>
+  </section>
+
+  <!-- ── 3. Preview ────────────────────────────────────────────── -->
+  <section class="screen preview" x-show="screen === 'preview'">
+    <template x-if="question">
+      <div class="ask" role="status">
+        <p class="ask-q" x-text="question"></p>
+        <div class="ask-row">
+          <input type="text" x-model="answer" placeholder="Type the answer" aria-label="Your answer"
+                 @keydown.enter.prevent="answerTyped()">
+          <button class="icon-btn" :class="{ live: recording }" @click="toggleRecording('answer')"
+                  :aria-label="recording ? 'Stop recording' : 'Say the answer'">
+            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg>
+          </button>
+          <button class="btn small" :disabled="!answer.trim() || busy" @click="answerTyped()">OK</button>
+        </div>
+        <p class="ask-busy" x-show="busy">Updating…</p>
+      </div>
+    </template>
+
+    <ul class="warnings" x-show="warnings.length">
+      <template x-for="w in warnings"><li x-text="w"></li></template>
+    </ul>
+
+    <div class="card">
+      <p class="eyebrow">Invoice for</p>
+      <label class="field" :class="flagClass('client_name')">
+        <span>Name</span>
+        <input type="text" x-model="card.client_name" @input="confirmField('client_name')"
+               autocomplete="off" placeholder="Client name">
+      </label>
+      <label class="field" :class="flagClass('client_email')">
+        <span>Email <em x-show="flagged('client_email')">check this</em></span>
+        <input type="email" x-model.trim="card.client_email" @input="confirmField('client_email')"
+               inputmode="email" autocomplete="off" autocapitalize="off" placeholder="client@example.com">
+      </label>
+
+      <p class="eyebrow">Work</p>
+      <ol class="items">
+        <template x-for="(item, n) in card.items" :key="item.key">
+          <li class="item">
+            <div class="item-top">
+              <input class="item-name" type="text" x-model="item.name" aria-label="Item"
+                     :class="flagClass(`items.${n}.name`)" @input="confirmField(`items.${n}.name`)">
+              <button class="remove" @click="removeItem(n)" aria-label="Remove line">×</button>
+            </div>
+            <div class="item-nums">
+              <input type="text" inputmode="decimal" x-model="item.quantity" aria-label="Quantity"
+                     :class="flagClass(`items.${n}.quantity`)" @input="confirmField(`items.${n}.quantity`)">
+              <span class="unit" x-text="item.unit === 'hours' ? 'h ×' : '×'"></span>
+              <input type="text" inputmode="decimal" x-model="item.unit_price" aria-label="Price each"
+                     :class="flagClass(`items.${n}.unit_price`)" @input="confirmField(`items.${n}.unit_price`)"
+                     :placeholder="'Price'">
+              <span class="line-total" x-text="money(lineCents(item))"></span>
+            </div>
+            <label class="chip"><input type="checkbox" x-model="item.is_material"> Materials</label>
+          </li>
+        </template>
+      </ol>
+      <button class="link" @click="addItem()">+ Add a line</button>
+
+      <div class="row-2">
+        <label class="field" :class="flagClass('due_date')">
+          <span>Due</span>
+          <input type="date" x-model="card.due_date" @input="confirmField('due_date')">
+          <small x-show="!card.due_date" x-text="dueHint()"></small>
+        </label>
+        <label class="field">
+          <span>Currency</span>
+          <input type="text" x-model="card.currency" maxlength="3" class="upper" autocapitalize="characters">
+        </label>
+      </div>
+
+      <details class="note">
+        <summary>Note to client</summary>
+        <textarea rows="2" x-model="card.notes" maxlength="4000" placeholder="Thanks for your business!"></textarea>
+      </details>
+
+      <div class="total">
+        <span>Total</span>
+        <strong x-text="money(totalCents())"></strong>
+      </div>
+      <p class="said" x-show="transcript">You said: “<span x-text="transcript"></span>”</p>
+    </div>
+
+    <p class="error" role="alert" x-show="error" x-text="error"></p>
+    <p class="why" x-show="!canSend() && !busy" x-text="blocker()"></p>
+
+    <div class="actions">
+      <button class="btn primary big" :disabled="!canSend() || busy" @click="send()"
+              x-text="busy ? 'Sending…' : `Send ${money(totalCents())} invoice`"></button>
+      <button class="link" @click="reset()" :disabled="busy">Start again</button>
+    </div>
+  </section>
+
+  <!-- ── 4. Sent ───────────────────────────────────────────────── -->
+  <section class="screen sent" x-show="screen === 'sent'">
+    <template x-if="invoice">
+      <div>
+        <div class="tick" aria-hidden="true">✓</div>
+        <h1>Invoice sent</h1>
+        <p class="big" x-text="money(toCents(invoice.total), invoice.currency)"></p>
+        <p class="muted">
+          <span x-text="invoice.number ? `No. ${invoice.number} · ` : ''"></span>
+          to <span x-text="invoice.client_email"></span>
+        </p>
+
+        <div class="actions">
+          <button class="btn primary big" @click="openQr()">Show QR to pay now</button>
+          <button class="btn" @click="copyLink()" :disabled="!invoice.payer_view_url"
+                  x-text="copied ? 'Link copied ✓' : 'Copy pay link'"></button>
+          <button class="btn" x-show="canShare" @click="shareLink()">Share…</button>
+          <button class="link" @click="reset()">New job</button>
+        </div>
+      </div>
+    </template>
+  </section>
+
+  <!-- ── Doorstep QR, full screen ──────────────────────────────── -->
+  <div class="qr" x-show="qrOpen" x-transition.opacity @keydown.escape.window="closeQr()"
+       role="dialog" aria-modal="true" aria-label="Scan to pay">
+    <template x-if="invoice && qrOpen">
+      <div class="qr-inner">
+        <p class="qr-biz">{{ business_name }}</p>
+        <p class="qr-total" x-text="money(toCents(invoice.total), invoice.currency)"></p>
+        <img :src="`/api/invoices/${invoice.id}/qr.png`" alt="QR code to pay this invoice"
+             width="320" height="320" @error="qrError = true" x-show="!qrError">
+        <p class="error" x-show="qrError">Couldn't load the QR code. Use “Copy pay link” instead.</p>
+        <p class="qr-help">Scan with your phone camera to pay by card or PayPal</p>
+        <button class="btn big" @click="closeQr()">Done</button>
+      </div>
+    </template>
+  </div>
+
+</main>
+<noscript><p class="noscript">SayInvoice needs JavaScript turned on.</p></noscript>
+</body>
+</html>

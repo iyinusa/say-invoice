@@ -5,10 +5,13 @@ from contextlib import asynccontextmanager
 
 from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
+from fastapi.staticfiles import StaticFiles
 
+from app.agents.parser import ParserNotConfigured
 from app.logging_config import configure_logging, get_logger
 from app.paypal import PayPalNotConfigured, close_paypal
-from app.routers import health, webhooks
+from app.routers import health, invoices, parse, ui, webhooks
+from app.routers.ui import STATIC_DIR
 from app.settings import get_settings
 
 
@@ -46,12 +49,17 @@ def create_app() -> FastAPI:
     async def _paypal_not_configured(_req: Request, exc: PayPalNotConfigured) -> JSONResponse:
         return JSONResponse({"detail": f"PayPal is not configured: {exc}"}, status_code=503)
 
+    @app.exception_handler(ParserNotConfigured)
+    async def _parser_not_configured(_req: Request, exc: ParserNotConfigured) -> JSONResponse:
+        return JSONResponse({"detail": f"Voice parsing is not configured: {exc}"}, status_code=503)
+
     app.include_router(health.router)
+    app.include_router(parse.router)
+    app.include_router(invoices.router)
     app.include_router(webhooks.router)
 
-    @app.get("/", include_in_schema=False)
-    async def index() -> dict[str, str]:
-        return {"name": "SayInvoice", "tagline": "Speak the job. Get paid."}
+    app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
+    app.include_router(ui.router)
 
     return app
 
