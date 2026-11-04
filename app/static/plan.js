@@ -1,5 +1,11 @@
 // The client's payment-plan page: propose a plan, agree it, watch instalments get paid.
+function tr(key, values = {}) {
+  const text = (window.PLAN.T || {})[key] || key;
+  return text.replace(/\{(\w+)\}/g, (_, k) => (values[k] ?? `{${k}}`));
+}
+
 window.planPage = () => ({
+  tr,
   token: window.PLAN.token,
   state: window.PLAN.initial,
   messages: window.PLAN.initial.messages,
@@ -13,17 +19,17 @@ window.planPage = () => ({
     this.schedulePoll();
   },
   speaker(m) {
-    if (m.role === "client") return "You";
+    if (m.role === "client") return tr("you");
     if (m.role === "owner") return window.PLAN.owner;
-    return `${window.PLAN.business} assistant`;
+    return tr("assistant", { business: window.PLAN.business });
   },
   pillText() {
     const s = this.state.status;
-    if (s === "paid") return "Paid";
-    if (this.state.agreed.length) return "On a plan";
-    if (s === "awaiting_owner") return `With ${window.PLAN.owner}`;
-    if (s === "overdue") return "Overdue";
-    return "Unpaid";
+    if (s === "paid") return tr("pill_paid");
+    if (this.state.agreed.length) return tr("pill_on_plan");
+    if (s === "awaiting_owner") return tr("pill_with", { owner: window.PLAN.owner });
+    if (s === "overdue") return tr("pill_overdue");
+    return tr("pill_unpaid");
   },
   pillClass() {
     const s = this.state.status;
@@ -67,14 +73,14 @@ window.planPage = () => ({
       if (!resp.ok) {
         this.messages = this.messages.filter((m) => !String(m.id).startsWith("tmp-"));
         this.draft = text;
-        this.error = typeof body.detail === "string" ? body.detail : "Couldn't send that. Try again.";
+        this.error = typeof body.detail === "string" ? body.detail : tr("err_send");
         return;
       }
       this.apply(body);
     } catch {
       this.messages = this.messages.filter((m) => !String(m.id).startsWith("tmp-"));
       this.draft = text;
-      this.error = "No connection. Try again.";
+      this.error = tr("err_no_connection");
     } finally {
       this.sending = false;
     }
@@ -86,13 +92,13 @@ window.planPage = () => ({
       const resp = await fetch(`/p/${this.token}/plans/${m.id}/accept`, { method: "POST" });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        this.error = typeof body.detail === "string" ? body.detail : "Couldn't set up the plan just now.";
+        this.error = typeof body.detail === "string" ? body.detail : tr("err_plan");
         return;
       }
       this.apply(body);
       window.scrollTo({ top: 0, behavior: "smooth" });
     } catch {
-      this.error = "No connection. Try again.";
+      this.error = tr("err_no_connection");
     } finally {
       this.busy = false;
     }

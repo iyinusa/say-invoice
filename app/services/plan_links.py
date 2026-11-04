@@ -25,8 +25,15 @@ def plan_url(inv: Any, base_url: str | None = None) -> str:
     return f"{base}/p/{ensure_token(inv)}"
 
 
+def client_language(inv: Any) -> str:
+    client = getattr(inv, "client", None)
+    return getattr(client, "language", None) or "en"
+
+
 def plan_line(inv: Any) -> str:
-    return f"Can't pay it all at once? Suggest a payment plan: {plan_url(inv)}"
+    from app.i18n import t
+
+    return t(client_language(inv), "plan_line", url=plan_url(inv))
 
 
 def next_instalment(inv: Any) -> tuple[date, Decimal] | None:

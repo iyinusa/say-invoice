@@ -12,6 +12,8 @@
       currency: {{ currency | tojson }},
       defaultDueDays: {{ default_due_days | tojson }},
       minDeposit: {{ min_deposit | tojson }},
+      ttsEngine: {{ tts_engine | tojson }},
+      languages: {{ languages | tojson }},
     };
   </script>
   <script defer src="/static/app.js?v={{ v }}"></script>
@@ -52,6 +54,10 @@
     </button>
     <p class="mic-label" aria-live="polite"
        x-text="recording ? `Listening… ${clock(seconds)} · tap to stop` : 'Tap to talk'"></p>
+    <label class="readback-toggle" x-show="canSpeak">
+      <input type="checkbox" role="switch" class="switch small" :checked="readBack" @change="toggleReadBack()">
+      <span>Read cards aloud, then say “send”</span>
+    </label>
 
     <div class="typed panel" x-show="typing">
       <label for="job-text" class="field-label">Describe the job</label>
@@ -93,6 +99,15 @@
 
   <!-- ── 3. Preview ────────────────────────────────────────────── -->
   <section class="screen preview" x-show="screen === 'preview'">
+    <div class="voicebar" x-show="voiceState !== 'idle'" role="status" aria-live="assertive" :class="voiceState">
+      <span class="voice-dot" aria-hidden="true"></span>
+      <span class="voice-text" x-text="{
+        speaking: 'Reading it back…',
+        listening: 'Listening… say “send” or “change”',
+        countdown: `Heard “${heard}”. Sending in ${countdown}…`,
+      }[voiceState]"></span>
+      <button class="voice-stop" @click="stopVoice()">Stop</button>
+    </div>
     <template x-if="matchedJob && mode !== 'final'">
       <div class="callout match" role="status">
         <p class="callout-title" x-text="`This looks like ${matchedJob.client_name}'s booked job (${matchedJob.number}).`"></p>
@@ -147,17 +162,41 @@
       <h2 class="section-title" x-text="mode === 'quote' ? 'Quote for' : 'Bill to'"></h2>
       <div class="field" :class="flagClass('client_name')">
         <label class="field-label" for="client-name">Client name</label>
-        <input id="client-name" class="control" type="text" x-model="card.client_name"
-               @input="confirmField('client_name')" autocomplete="off" placeholder="e.g. Tom Kennedy">
+        <input id="client-name" class="control" type="text" x-model="card.client_name" list="saved-clients"
+               @input="confirmField('client_name'); lookupClients()" @change="useTypedClient()"
+               autocomplete="off" placeholder="e.g. Tom Kennedy">
+        <datalist id="saved-clients">
+          <template x-for="c in clientOptions" :key="c.email"><option :value="c.name" x-text="c.email"></option></template>
+        </datalist>
       </div>
       <div class="field" :class="flagClass('client_email')">
         <label class="field-label" for="client-email">Email <span class="optional" x-show="mode === 'quote'">optional</span></label>
         <input id="client-email" class="control" type="email" x-model.trim="card.client_email"
-               @input="confirmField('client_email')" inputmode="email" autocomplete="off"
+               @input="confirmField('client_email'); clientSource = ''" inputmode="email" autocomplete="off"
                autocapitalize="off" spellcheck="false" placeholder="client@example.com">
         <p class="field-flag" x-show="flagged('client_email')"
            x-text="card.client_email ? 'Heard from your voice note. Check the spelling.' : 'Needed: PayPal sends the invoice here.'"></p>
-        <p class="field-help" x-show="mode === 'quote' && !flagged('client_email')">No email? You can send the quote link by text.</p>
+        <p class="field-help" x-show="mode === 'quote' && !flagged('client_email') && clientSource !== 'saved'">No email? You can send the quote link by text.</p>
+        <p class="saved-client" x-show="clientSource === 'saved'">✓ From your saved clients</p>
+      </div>
+      <div class="callout pick" x-show="suggestions.length" role="group" aria-label="Which client?">
+        <p class="callout-title" x-text="`Which ${card.client_name || 'client'}?`"></p>
+        <div class="pick-row">
+          <template x-for="c in suggestions" :key="c.email">
+            <button type="button" class="btn small" @click="pickClient(c)">
+              <span x-text="c.name"></span><small x-text="c.email"></small>
+            </button>
+          </template>
+        </div>
+      </div>
+      <div class="field" x-show="mode !== 'final'">
+        <label class="field-label" for="client-lang">Client's language</label>
+        <select id="client-lang" class="control" x-model="card.language">
+          <template x-for="(name, code) in window.SAYINVOICE.languages" :key="code">
+            <option :value="code" x-text="name" :selected="code === card.language"></option>
+          </template>
+        </select>
+        <p class="field-help">Their quote page, messages and reminders use it.</p>
       </div>
 
       <h2 class="section-title">Work</h2>
@@ -257,6 +296,10 @@
     <div class="actions">
       <button class="btn primary big" :disabled="!canSend() || busy" @click="send()"
               x-text="busy ? (mode === 'quote' ? 'Creating…' : 'Sending…') : (mode === 'quote' ? `Create ${money(totalCents())} quote` : mode === 'final' ? `Send ${money(finalBalanceCents())} final invoice` : `Send ${money(totalCents())} invoice`)"></button>
+      <button class="btn" x-show="canSpeak" :disabled="busy || voiceState !== 'idle'" @click="readItBack()">
+        <svg viewBox="0 0 24 24" aria-hidden="true" class="btn-icon"><path d="M11 5 6 9H3v6h3l5 4V5Zm4.5 3.5a5 5 0 0 1 0 7l-1.4-1.4a3 3 0 0 0 0-4.2l1.4-1.4Zm2.8-2.8a9 9 0 0 1 0 12.6l-1.4-1.4a7 7 0 0 0 0-9.8l1.4-1.4Z"/></svg>
+        Read it back
+      </button>
       <button class="btn ghost" @click="reset()" :disabled="busy">Start again</button>
     </div>
   </section>

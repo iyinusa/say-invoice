@@ -174,7 +174,8 @@ async def send_final(
         parts.append(notes.strip())
 
     data = InvoiceIn(
-        idempotency_key=f"final-{q.id}",  # one final invoice per quote, however often it's tapped
+        idempotency_key=f"final-{q.id}",
+        language=q.language,  # one final invoice per quote, however often it's tapped
         client_name=client_name,
         client_email=client_email,
         currency=cur,

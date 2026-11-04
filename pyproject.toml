@@ -25,6 +25,12 @@ dependencies = [
     "mcp>=1.9",
 ]
 
+[project.optional-dependencies]
+tts = [
+    "kokoro>=0.9",
+    "soundfile>=0.12",
+]
+
 [dependency-groups]
 dev = [
     "pytest>=8.2",

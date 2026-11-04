@@ -24,6 +24,8 @@ from pydantic import BaseModel, Field, ValidationError
 
 from app.agents.parser import _all_required
 from app.deals.guard import Offer, OfferLine, Policy, QuoteTerms
+from app.i18n import LANGUAGES
+from app.i18n import base as base_lang
 from app.logging_config import get_logger
 from app.money import display, line_total
 from app.settings import Settings, get_settings
@@ -117,8 +119,9 @@ def short_ids(base: QuoteTerms) -> dict[str, str]:
 
 
 def build_system(
-    *, business: str, number: str, base: QuoteTerms, policy: Policy, today: date
-) -> str:
+    *, business: str, number: str, base: QuoteTerms, policy: Policy, today: date,
+    language: str = "en",
+) -> str:  # fmt: skip
     cur = base.currency
     rows = []
     for short, ln in zip(short_ids(base), base.lines, strict=True):
@@ -135,6 +138,10 @@ def build_system(
         deposit_pct=f"{base.deposit_pct.normalize():f}",
         job_date=f" Job date: {base.job_date.isoformat()}." if base.job_date else "",
         rules=json.dumps(policy.for_agent(), indent=1),
+    ) + (
+        f"\nThe client's language is {LANGUAGES.get(base_lang(language), 'English')}: write"
+        " every reply in it (switch only if the client writes in another language), using"
+        " the polite form of address where the language has one (usted, vous, Sie, Pan/Pani)."
     )
 
 

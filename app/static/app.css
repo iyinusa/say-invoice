@@ -419,6 +419,30 @@ input[type="date"].control::-webkit-calendar-picker-indicator { margin-left: 4px
 .empty { padding: 32px 16px; text-align: center; color: var(--muted); background: var(--surface); border: 1px dashed var(--line-strong); border-radius: var(--r-lg); }
 .empty p { margin: 0; }
 
+/* ── client memory ──────────────────────────────────────── */
+.saved-client { margin: 0; font-size: 13px; font-weight: 700; color: var(--brand); }
+.callout.pick { background: var(--surface-2); border-color: var(--line-strong); margin-top: -4px; }
+.pick-row { display: flex; flex-wrap: wrap; gap: 8px; }
+.pick-row .btn.small { display: grid; justify-items: start; text-align: left; min-height: 48px; padding: 6px 12px; }
+.pick-row .btn small { font-size: 12px; font-weight: 500; color: var(--muted); }
+
+/* ── voice read-back ────────────────────────────────────── */
+.readback-toggle { display: inline-flex; align-items: center; gap: 10px; margin: 0 0 16px; font-size: 14px; color: var(--muted); cursor: pointer; }
+.switch.small { width: 40px; height: 24px; }
+.switch.small::before { width: 18px; height: 18px; }
+.switch.small:checked::before { transform: translateX(16px); }
+.voicebar {
+  position: sticky; top: 8px; z-index: 5; display: flex; align-items: center; gap: 10px; margin-bottom: 12px;
+  padding: 10px 12px; border-radius: 14px; background: var(--ink); color: var(--surface); box-shadow: var(--shadow);
+}
+.voicebar.countdown { background: var(--brand); color: var(--brand-ink); }
+.voice-dot { flex: none; width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: blink 1.2s ease-in-out infinite; }
+.voicebar.listening .voice-dot { background: var(--live); }
+.voice-text { flex: 1; font-weight: 650; }
+.voice-stop { flex: none; min-height: 36px; padding: 0 14px; border-radius: 999px; border: 0; background: var(--surface); color: var(--ink); font-weight: 800; cursor: pointer; }
+.btn-icon { width: 20px; height: 20px; fill: currentColor; }
+@media (prefers-reduced-motion: reduce) { .voice-dot { animation: none; } }
+
 /* ── demo clock ─────────────────────────────────────────── */
 .demo-banner {
   display: flex; align-items: center; justify-content: space-between; gap: 8px; margin: 0 0 12px;

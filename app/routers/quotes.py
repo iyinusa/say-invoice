@@ -15,6 +15,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.db import get_session
 from app.deals import negotiator
 from app.deals.agent import DealAgentUnavailable, DealModel, get_deal_model
@@ -22,7 +23,7 @@ from app.models import DealMessage, Quote, Workspace
 from app.money import display, line_total, plain
 from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.routers.invoices import current_workspace
-from app.routers.ui import ASSET_VERSION, templates
+from app.routers.ui import ASSET_VERSION, not_found_page, templates
 from app.schemas.invoice import InvoiceOut
 from app.schemas.quote import (
     AcceptIn,
@@ -340,9 +341,7 @@ async def quote_page(
 ) -> HTMLResponse:
     q = await quotes.by_token(session, token)
     if q is None:
-        return templates.TemplateResponse(
-            request, "quote_missing.html", {"v": ASSET_VERSION}, status_code=404
-        )
+        return not_found_page(request)
     ws = await session.get(Workspace, q.workspace_id)
     deposit = quotes.deposit_amount(q)
     lines = [
@@ -357,12 +356,17 @@ async def quote_page(
         }
         for ln in q.lines
     ]
+    lang = i18n.base(q.language)
     return templates.TemplateResponse(
         request,
         "quote.html",
         {
             "v": ASSET_VERSION,
             "q": q,
+            "lang": lang,
+            "T": i18n.strings(lang),
+            "valid_until": i18n.fmt_date(q.valid_until, lang, year=True),
+            "job_date": i18n.fmt_date(q.job_date, lang, weekday=True) if q.job_date else "",
             "business_name": ws.business_name if ws else "",
             "lines": lines,
             "total": display(q.total, q.currency),

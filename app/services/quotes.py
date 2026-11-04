@@ -65,16 +65,21 @@ def is_expired(q: Quote, today: date) -> bool:
     return q.status in OPEN and q.valid_until < today
 
 
-async def _client(session: AsyncSession, ws: Workspace, name: str, email: str) -> Client:
+async def _client(
+    session: AsyncSession, ws: Workspace, name: str, email: str, language: str = ""
+) -> Client:
     email = email.lower()
     client = await session.scalar(
         select(Client).where(Client.workspace_id == ws.id, Client.email == email)
     )
     if client is None:
-        client = Client(workspace_id=ws.id, name=name, email=email)
+        client = Client(workspace_id=ws.id, name=name, email=email, language=language or "en")
         session.add(client)
-    elif name:
-        client.name = name
+    else:
+        if name:
+            client.name = name
+        if language:
+            client.language = language
     await session.flush()
     return client
 
@@ -92,7 +97,7 @@ async def create_quote(
 
     count = await session.scalar(select(func.count()).where(Quote.workspace_id == ws.id)) or 0
     email = str(data.client_email).lower() if data.client_email else ""
-    client = await _client(session, ws, data.client_name, email) if email else None
+    client = await _client(session, ws, data.client_name, email, data.language) if email else None
     lines = [
         QuoteLine(
             position=n,
@@ -113,6 +118,7 @@ async def create_quote(
         number=f"Q-{count + 1:04d}",
         client_name=data.client_name,
         client_email=email,
+        language=data.language,
         currency=data.currency,
         total=subtotal(((ln.quantity, ln.unit_amount) for ln in lines), data.currency),
         # Not said: the owner's own minimum from the Deal Policy.
@@ -209,7 +215,7 @@ async def accept(
         email = str(data.email) if data.email else q.client_email
         if not email:
             raise EmailNeeded("add your email so PayPal can send the deposit request")
-        client = await _client(session, ws, data.name or q.client_name, email)
+        client = await _client(session, ws, data.name or q.client_name, email, q.language)
         q.client_id = client.id
         q.client_email = client.email
         q.client_name = data.name or q.client_name
@@ -242,6 +248,7 @@ async def accept(
     work = ", ".join(ln.name for ln in q.lines)
     deposit = InvoiceIn(
         idempotency_key=f"deposit-{q.id}",
+        language=q.language,
         client_name=q.client_name,
         client_email=q.client_email,
         currency=q.currency,

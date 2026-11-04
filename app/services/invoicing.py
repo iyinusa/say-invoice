@@ -78,16 +78,21 @@ async def default_workspace(session: AsyncSession, settings: Settings) -> Worksp
     return ws
 
 
-async def _client_for(session: AsyncSession, ws: Workspace, name: str, email: str) -> Client:
+async def _client_for(
+    session: AsyncSession, ws: Workspace, name: str, email: str, language: str = ""
+) -> Client:
     email = email.lower()
     client = await session.scalar(
         select(Client).where(Client.workspace_id == ws.id, Client.email == email)
     )
     if client is None:
-        client = Client(workspace_id=ws.id, name=name, email=email)
+        client = Client(workspace_id=ws.id, name=name, email=email, language=language or "en")
         session.add(client)
-    elif name:
-        client.name = name
+    else:
+        if name:
+            client.name = name
+        if language:
+            client.language = language
     return client
 
 
@@ -159,7 +164,9 @@ async def create_and_send(
     if inv is not None and inv.status != "draft":
         return inv  # already sent: this is a retry of a tap that worked
     if inv is None:
-        client = await _client_for(session, ws, data.client_name, str(data.client_email))
+        client = await _client_for(
+            session, ws, data.client_name, str(data.client_email), data.language
+        )
         inv = Invoice(
             workspace_id=ws.id, idempotency_key=data.idempotency_key, kind=kind, quote_id=quote_id
         )
@@ -181,7 +188,9 @@ async def create_and_send(
             raise InvoiceConflict("that invoice already exists at PayPal; start a new one")
         # Edited after a failed send, before PayPal ever saw it: replace the draft
         # (the old lines go with delete-orphan).
-        client = await _client_for(session, ws, data.client_name, str(data.client_email))
+        client = await _client_for(
+            session, ws, data.client_name, str(data.client_email), data.language
+        )
         _fill(inv, data, client, ws, today, discount)
         await session.commit()
     return await push_to_paypal(session, paypal, ws, inv, today=today)

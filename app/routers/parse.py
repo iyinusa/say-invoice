@@ -13,13 +13,16 @@ from zoneinfo import ZoneInfo, ZoneInfoNotFoundError
 
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from pydantic import ValidationError
+from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.agents.parser import JobParser, ParserUnavailable, get_job_parser
+from app.agents.parser_rules import finalize
+from app.db import get_session
 from app.logging_config import get_logger
 from app.models import Workspace
 from app.routers.invoices import current_workspace
 from app.schemas.job import ParsedJob, ParseResult
-from app.services import clock
+from app.services import clients, clock
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api", tags=["parse"])
@@ -35,6 +38,32 @@ def _today(tz: str) -> date:
     except (ZoneInfoNotFoundError, ValueError):
         zone = UTC
     return datetime.now(zone).date()
+
+
+async def _remember_client(
+    session: AsyncSession, ws: Workspace, result: ParseResult, *, mode: str, today: date,
+    currency: str,
+) -> ParseResult:  # fmt: skip
+    """Fill in a saved client's email and language, then let the rules re-check the card."""
+    from app.i18n import base
+
+    result.client_language = base(result.language)
+    match, options = await clients.find(session, ws, result.client_name, result.client_email)
+    if match is None:
+        result.client_suggestions = [clients.view(c) for c in options]
+        return result
+    if not result.client_email:
+        draft = result.draft.model_copy(update={
+            "client_email": match.email,
+            "client_name": match.name or result.client_name,
+            "missing_fields": [f for f in result.draft.missing_fields if f != "client_email"],
+            "follow_up_question": "" if result.missing_fields[:1] == ["client_email"]
+            else result.draft.follow_up_question,
+        })  # fmt: skip
+        result = finalize(draft, requested_mode=mode, default_currency=currency, today=today)  # type: ignore[arg-type]
+    result.client_source = "saved"
+    result.client_language = base(match.language)
+    return result
 
 
 def _audio_mime(content_type: str | None) -> str:
@@ -57,6 +86,7 @@ async def parse_job(
     settings: Settings = Depends(get_settings),
     parser: JobParser = Depends(get_job_parser),
     ws: Workspace = Depends(current_workspace),
+    session: AsyncSession = Depends(get_session),
 ) -> ParseResult:
     if len(text) > MAX_TEXT_CHARS:
         raise HTTPException(413, f"keep it under {MAX_TEXT_CHARS} characters")
@@ -82,8 +112,9 @@ async def parse_job(
         raise HTTPException(422, "say or type the job first")
 
     try:
+        today = _today(tz) + clock.offset(ws)  # "due Friday" counts from the demo clock
         result = await parser.parse(
-            today=_today(tz) + clock.offset(ws),  # "due Friday" counts from the demo clock
+            today=today,
             default_currency=settings.default_currency,
             text=text,
             audio=audio_bytes,
@@ -96,6 +127,8 @@ async def parse_job(
             503, "Couldn't read that just now. Try again, or type it instead."
         ) from exc
 
+    result = await _remember_client(session, ws, result, mode=mode, today=today,
+                                    currency=settings.default_currency)  # fmt: skip
     log.info(
         "parsed",
         mode=result.mode,

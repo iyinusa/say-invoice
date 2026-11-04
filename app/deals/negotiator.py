@@ -37,6 +37,7 @@ from app.deals.guard import (
 from app.deals.guard import (
     QuoteLine as GuardLine,
 )
+from app.i18n import t
 from app.logging_config import get_logger
 from app.models import DealMessage, Quote, Workspace
 from app.models.base import utcnow
@@ -148,8 +149,9 @@ async def client_message(
     prior = _prior_amounts(msgs)
     owner = first_name(ws)
     system = deal_agent.build_system(
-        business=ws.business_name, number=q.number, base=base, policy=policy, today=today
-    )
+        business=ws.business_name, number=q.number, base=base, policy=policy, today=today,
+        language=q.language,
+    )  # fmt: skip
     conversation = transcript(msgs, owner, text)
 
     feedback = ""
@@ -244,7 +246,7 @@ async def _escalate(
         quote_id=q.id,
         role="agent",
         # Fixed wording: the model's own reply may have promised something it can't.
-        text=f"Thanks! Let me check that with {owner} and come back to you shortly.",
+        text=t(q.language, "msg_check_with_owner", owner=owner),
         offer_status="escalated",
         offer=offer.model_dump(mode="json") if offer else None,
         priced=result.priced.to_json()
@@ -314,10 +316,7 @@ async def owner_decision(
         reply.text = note
     elif action == "decline":
         msg.offer_status = "declined"
-        reply.text = note or (
-            f"Sorry, {owner} can't do that one. The quote stands as it is, "
-            "and you can still accept it below."
-        )
+        reply.text = note or t(q.language, "msg_owner_declined", owner=owner)
     else:
         if action == "approve":
             if msg.offer is None:
@@ -344,11 +343,10 @@ async def owner_decision(
         reply.offer_status = "open"
         reply.offer = proposal.model_dump(mode="json")
         reply.priced = result.priced.to_json()
-        reply.text = note or (
-            f"Good news: {owner} has agreed. Here's the updated quote."
-            if action == "approve"
-            else f"{owner} can do this instead:"
-        )
+        reply.text = note or t(
+            q.language, "msg_owner_agreed" if action == "approve" else "msg_owner_counter",
+            owner=owner,
+        )  # fmt: skip
     q.status = "negotiating"
     session.add(reply)
     await session.commit()

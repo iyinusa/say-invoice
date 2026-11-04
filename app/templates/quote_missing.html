@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -12,8 +12,8 @@
 <body class="client">
 <main class="app doc">
   <section class="card action" style="margin-top:48px">
-    <h2>We can't find that quote</h2>
-    <p class="muted">The link may be incomplete. Ask whoever sent it for a new one.</p>
+    <h2>{{ T.not_found_title }}</h2>
+    <p class="muted">{{ T.not_found_body }}</p>
   </section>
 </main>
 </body>

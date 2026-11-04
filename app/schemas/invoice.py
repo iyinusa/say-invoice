@@ -39,6 +39,15 @@ class InvoiceIn(BaseModel):
     notes: str = Field(default="", max_length=4000)
     transcript: str = Field(default="", max_length=10_000)
     draft: dict[str, Any] | None = Field(default=None, description="The parser's raw draft.")
+    # The client's language (their pages, messages and reminders); kept on the client record.
+    language: str = Field(default="en", max_length=16)
+
+    @field_validator("language")
+    @classmethod
+    def _language(cls, v: str) -> str:
+        from app.i18n import base
+
+        return base(v)
 
     @field_validator("currency")
     @classmethod

@@ -32,6 +32,18 @@ async def who_owes_me(
     return await money_view.home(session, ws, today(ws))
 
 
+@router.get("/clients")
+async def saved_clients(
+    q: str = "",
+    session: AsyncSession = Depends(get_session),
+    ws: Workspace = Depends(current_workspace),
+) -> list[dict[str, str]]:
+    """For the card's name box: clients you've invoiced or quoted before."""
+    from app.services import clients
+
+    return [clients.view(c) for c in await clients.search(session, ws, q)]
+
+
 @router.get("/jobs/invoice/{invoice_id}")
 async def invoice_job(
     invoice_id: str,

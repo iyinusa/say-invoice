@@ -99,6 +99,8 @@ class Quote(IdMixin, Base):
     version: Mapped[int] = mapped_column(Integer, default=1)
     client_name: Mapped[str] = mapped_column(String(120), default="")
     client_email: Mapped[str] = mapped_column(String(254), default="")
+    # The client's language: their quote page, the Deal Agent and the messages use it.
+    language: Mapped[str] = mapped_column(String(8), default="en")
     currency: Mapped[str] = mapped_column(String(3))
     total: Mapped[Decimal] = mapped_column(Money)
     deposit_pct: Mapped[Decimal] = mapped_column(Money)

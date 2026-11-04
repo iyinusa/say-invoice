@@ -15,6 +15,7 @@ from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
+from app.i18n import LANGUAGES
 from app.services.invoicing import default_workspace
 from app.services.policy import get_policy
 from app.settings import Settings, get_settings
@@ -54,6 +55,18 @@ async def app_page(
             "currency": ws.currency,
             "default_due_days": ws.default_due_days,
             "min_deposit": float(policy.min_deposit_pct),
+            "tts_engine": settings.tts_engine,
+            "languages": LANGUAGES,
             "v": ASSET_VERSION,
         },
     )
+
+
+def not_found_page(request: Request) -> HTMLResponse:
+    """A friendly 404 for a client's quote or plan link that doesn't exist."""
+    from app import i18n
+
+    return templates.TemplateResponse(
+        request, "quote_missing.html", {"v": ASSET_VERSION, "T": i18n.strings("en"), "lang": "en"},
+        status_code=404,
+    )  # fmt: skip

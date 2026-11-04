@@ -40,7 +40,7 @@ from app.services import invoice_actions, payments
 from app.services.invoice_actions import ActionRefused, aware, last_reminder
 from app.services.live import broker
 from app.services.money_view import OPEN, balance, days_overdue
-from app.services.plan_links import next_instalment
+from app.services.plan_links import client_language, next_instalment
 from app.settings import Settings
 
 log = get_logger("chase")
@@ -95,6 +95,7 @@ def facts_for(inv: Invoice, ws: Workspace, today: date, rung: int) -> ReminderFa
         step=rung,
         instalment=nxt[1] if (nxt := next_instalment(inv)) else None,
         instalment_due=nxt[0] if nxt else None,
+        language=client_language(inv),
     )
 
 

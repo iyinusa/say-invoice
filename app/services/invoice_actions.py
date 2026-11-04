@@ -13,6 +13,7 @@ from typing import Any, Protocol
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app.i18n import t
 from app.logging_config import get_logger
 from app.models import Event, Invoice, Workspace
 from app.models.base import utcnow
@@ -20,7 +21,7 @@ from app.money import display
 from app.services import invoicing, payments
 from app.services.clock import real_today
 from app.services.money_view import OPEN, balance
-from app.services.plan_links import plan_line
+from app.services.plan_links import client_language, plan_line
 
 log = get_logger("invoice_actions")
 
@@ -58,11 +59,11 @@ async def last_reminder(session: AsyncSession, inv: Invoice) -> Event | None:
 
 
 def default_reminder(inv: Invoice, ws: Workspace) -> str:
-    return (
-        f"Hi {inv.client.name or 'there'}, just a friendly reminder about invoice {inv.number} "
-        f"for {display(balance(inv), inv.currency)}. You can pay by card or PayPal from this "
-        f"email. Thank you! {ws.owner_name or ws.business_name}"
-    )
+    lang = client_language(inv)
+    name = (inv.client.name or t(lang, "there")).split()[0] if inv.client.name else t(lang, "there")
+    body = t(lang, "reminder_1", name=name, number=inv.number,
+             amount=display(balance(inv), inv.currency))  # fmt: skip
+    return f"{body} {ws.owner_name or ws.business_name}"
 
 
 async def remind(
@@ -84,7 +85,8 @@ async def remind(
     text = text[:1000]
     await paypal.remind(
         inv.paypal_invoice_id,
-        subject=subject or f"Reminder: invoice {inv.number} from {ws.business_name}",
+        subject=subject
+        or t(client_language(inv), "subject_1", number=inv.number, business=ws.business_name),
         note=text,
     )
     ev = Event(

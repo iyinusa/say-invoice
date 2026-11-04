@@ -28,6 +28,8 @@ from app.deals.negotiator import (
     TooManyMessages,
     first_name,
 )
+from app.i18n import LANGUAGES, t
+from app.i18n import base as base_lang
 from app.logging_config import get_logger
 from app.models import DealMessage, Event, Invoice, Workspace
 from app.models.base import utcnow
@@ -37,7 +39,7 @@ from app.services import payments
 from app.services import policy as policies
 from app.services.live import broker
 from app.services.money_view import OPEN, balance
-from app.services.plan_links import ensure_token, plan_url  # noqa: F401 - re-exported
+from app.services.plan_links import client_language, ensure_token, plan_url  # noqa: F401
 
 log = get_logger("plans")
 
@@ -144,6 +146,7 @@ async def client_message(
 
     ws = await session.get(Workspace, inv.workspace_id)
     assert ws is not None
+    lang = client_language(inv)
     policy = Policy.from_model(await policies.get_policy(session, ws))
     owed = balance(inv)
     cur = inv.currency
@@ -152,6 +155,10 @@ async def client_message(
         balance=display(owed, cur), total=display(inv.total, cur),
         due=inv.due_date.isoformat() if inv.due_date else "on receipt",
         max_instalments=policy.max_instalments, max_days=policy.max_plan_days,
+    ) + (
+        f"\nThe client's language is {LANGUAGES.get(base_lang(lang), 'English')}: "
+        "write every reply in it (switch only if the client writes in another language), "
+        "using the polite form of address where the language has one."
     )  # fmt: skip
     owner = first_name(ws)
     lines = []
@@ -234,7 +241,7 @@ async def _escalate(
     if reason:
         summary = f"{summary} ({reason})"
     msg = _msg(
-        inv, "agent", f"Thanks! Let me check that with {first_name(ws)} and come back to you soon.",
+        inv, "agent", t(client_language(inv), "msg_check_with_owner", owner=first_name(ws)),
         offer_status="escalated", offer=proposal.model_dump() if proposal else None, priced=priced,
         violations=[{"code": p.code, "message": p.message} for p in problems],
         owner_summary=summary[:500], created_at=client.created_at + timedelta(milliseconds=1),
@@ -296,10 +303,7 @@ async def owner_decision(
         msg.offer_status, reply.text = "answered", note
     elif action == "decline":
         msg.offer_status = "declined"
-        reply.text = (
-            note
-            or f"Sorry, {owner} can't agree that plan. You can still pay in full from the invoice."
-        )
+        reply.text = note or t(client_language(inv), "msg_owner_declined_plan", owner=owner)
     elif action == "approve":
         if msg.offer is None:
             raise OfferUnavailable("there's no plan to approve; reply instead")
@@ -310,7 +314,7 @@ async def owner_decision(
         msg.offer_status = "approved"
         reply.offer_status, reply.offer = "open", proposal.model_dump()
         reply.priced = schedule_json(inv, split_plan(balance(inv), proposal, inv.currency, today))
-        reply.text = note or f"Good news: {owner} has agreed. Tap “Agree this plan” to confirm."
+        reply.text = note or t(client_language(inv), "msg_owner_agreed_plan", owner=owner)
     else:
         raise OfferUnavailable("unknown action")
     session.add(reply)
@@ -344,11 +348,13 @@ async def accept(
     remote.setdefault("detail", {})["payment_term"] = {
         "term_type": "DUE_ON_DATE_SPECIFIED", "due_date": last_due.isoformat(),
     }  # fmt: skip
-    plan_line = (
-        "Payment plan agreed: "
-        + ", ".join(f"{display(a, cur)} by {d:%-d %b %Y}" for d, a in rows)
-        + "."
-    )
+    lang = client_language(inv)
+
+    def when(d: date) -> str:
+        return f"{d:%-d %b %Y}" if base_lang(lang) == "en" else f"{d:%-d.%m.%Y}"
+
+    schedule = ", ".join(t(lang, "plan_by", amount=display(a, cur), date=when(d)) for d, a in rows)
+    plan_line = t(lang, "plan_agreed_note", schedule=schedule)
     note = remote["detail"].get("note", "")
     remote["detail"]["note"] = (f"{note}\n\n{plan_line}" if note else plan_line)[:4000]
     try:

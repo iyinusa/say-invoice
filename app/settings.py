@@ -68,6 +68,10 @@ class Settings(BaseSettings):
     # Gemini takes inline audio up to ~20 MB per request; a spoken job is far smaller.
     max_audio_bytes: int = 10 * 1024 * 1024
 
+    # Voice read-back: "browser" (the phone's own voice: instant, free, multilingual) or
+    # "kokoro" (KokoroTTS on the server; needs `uv sync --extra tts` and more memory).
+    tts_engine: str = "browser"
+
     # The "simulate N days later" control for demos. Turn off for a real business.
     demo_clock_enabled: bool = True
 

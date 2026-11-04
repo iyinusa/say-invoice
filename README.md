@@ -53,6 +53,15 @@ uv run python -m scripts.spike_adk_mcp
 uv run python -m scripts.spike_gemini_audio path/to/voice-note.m4a
 ```
 
+## Voice read-back
+
+When a card is ready, SayInvoice reads it aloud: "Invoice for £145.00 to Mr Kennedy, due in 7 days. Say send to send it". Then it listens for a one-word reply.
+
+- **Saying "send"** (or "yes", "go ahead") starts a visible 3-second countdown with a Stop button before anything is sent.
+- **Saying "change"** or "wait" hands control back. If the reply contains both, stop wins.
+- **What it reads** is built by code from the card, never by the AI.
+- **The voice** is the phone's own by default: instant, free, and in the card's language. Set `SI_TTS_ENGINE=kokoro` to use [KokoroTTS](https://github.com/hexgrad/kokoro) on the server instead. It's optional because it needs PyTorch (`uv sync --extra tts`, about 1 GB) and downloads a model on first use; it isn't in the Docker image.
+
 ## Parser accuracy
 
 The parser turns a voice note into a draft invoice or quote in one Gemini call. Code then prices every line, resolves the due date and decides what's missing: the model never does sums. We measure the whole thing end to end, scoring the card the tradesperson would see, with [`scripts/eval_parser.py`](scripts/eval_parser.py) on [25 cases](evals/parser_cases.json):

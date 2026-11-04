@@ -1,7 +1,14 @@
 // The client's quote page: accept, pay the deposit, see "Booked" without reloading.
 const POLL_MS = 6000;
 
+// The page's fixed words, in the client's language (from app/i18n), with {placeholders}.
+function tr(key, values = {}) {
+  const text = (window.QUOTE.T || {})[key] || key;
+  return text.replace(/\{(\w+)\}/g, (_, k) => (values[k] ?? `{${k}}`));
+}
+
 window.quotePage = () => ({
+  tr,
   token: window.QUOTE.token,
   state: window.QUOTE.initial,
   email: window.QUOTE.initial.email || "",
@@ -22,9 +29,9 @@ window.quotePage = () => ({
 
   // ── ask for a change ──────────────────────────────────────────────────
   speaker(m) {
-    if (m.role === "client") return "You";
+    if (m.role === "client") return tr("you");
     if (m.role === "owner") return this.owner;
-    return `${window.QUOTE.business} assistant`;
+    return tr("assistant", { business: window.QUOTE.business });
   },
   openOffer() {
     return this.messages.some((m) => m.offer_status === "open");
@@ -59,21 +66,21 @@ window.quotePage = () => ({
       if (!resp.ok) {
         this.messages = this.messages.filter((m) => !String(m.id).startsWith("tmp-"));
         this.draft = text;
-        this.chatError = typeof body.detail === "string" ? body.detail : "Couldn't send that. Try again.";
+        this.chatError = typeof body.detail === "string" ? body.detail : tr("err_send");
         return;
       }
       this.applyConversation(body);
     } catch {
       this.messages = this.messages.filter((m) => !String(m.id).startsWith("tmp-"));
       this.draft = text;
-      this.chatError = "No connection. Try again.";
+      this.chatError = tr("err_no_connection");
     } finally {
       this.sending = false;
     }
   },
   async acceptOffer(m) {
     if (!this.email && !window.QUOTE.initial.email) {
-      this.chatError = "Add your email in the box below first, so PayPal can send the deposit request.";
+      this.chatError = tr("err_add_email");
       document.getElementById("email")?.focus();
       return;
     }
@@ -85,14 +92,14 @@ window.quotePage = () => ({
       });
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {
-        this.chatError = typeof body.detail === "string" ? body.detail : "Couldn't accept it just now.";
+        this.chatError = typeof body.detail === "string" ? body.detail : tr("err_accept");
         await this.loadMessages();
         return;
       }
       // The quote itself changed (new version): reload so every figure on the page matches.
       window.location.reload();
     } catch {
-      this.chatError = "No connection. Try again; you won't be charged twice.";
+      this.chatError = tr("err_no_connection");
     } finally {
       this.busy = false;
     }
@@ -107,11 +114,11 @@ window.quotePage = () => ({
 
   pillText() {
     const s = this.state.status;
-    if (s === "accepted") return this.depositDue() ? "Accepted" : "Booked";
-    if (s === "expired") return "Expired";
-    if (s === "declined") return "Closed";
-    if (s === "awaiting_owner") return `With ${this.owner}`;
-    return "Awaiting your reply";
+    if (s === "accepted") return this.depositDue() ? tr("pill_accepted") : tr("pill_booked");
+    if (s === "expired") return tr("pill_expired");
+    if (s === "declined") return tr("pill_closed");
+    if (s === "awaiting_owner") return tr("pill_with", { owner: this.owner });
+    return tr("pill_awaiting");
   },
   pillClass() {
     const s = this.state.status;
@@ -130,14 +137,14 @@ window.quotePage = () => ({
       const body = await resp.json().catch(() => ({}));
       if (!resp.ok) {
         const d = body.detail;
-        this.error = typeof d === "string" ? d : Array.isArray(d) ? "Check your email address." : "Couldn't book it just now. Try again.";
+        this.error = typeof d === "string" ? d : Array.isArray(d) ? tr("err_email") : tr("err_book");
         if (resp.status === 502) this.state.status = "accepted";
         return;
       }
       this.state = body;
       if (this.depositDue()) this.poll();
     } catch {
-      this.error = "No connection. Try again; you won't be charged twice.";
+      this.error = tr("err_no_connection");
     } finally {
       this.busy = false;
     }

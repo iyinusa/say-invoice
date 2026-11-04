@@ -126,7 +126,7 @@ def test_client_page_shows_the_quote(client: TestClient) -> None:
 def test_unknown_link_is_a_friendly_404(client: TestClient) -> None:
     resp = client.get("/q/not-a-real-token")
     assert resp.status_code == 404
-    assert "find that quote" in resp.text
+    assert "find that page" in resp.text
 
 
 def test_accept_needs_an_email_when_the_quote_has_none(

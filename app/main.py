@@ -23,6 +23,7 @@ from app.routers import (
     plans,
     policy,
     quotes,
+    tts,
     ui,
     webhooks,
 )
@@ -92,6 +93,7 @@ def create_app() -> FastAPI:
     app.include_router(plans.public)
     app.include_router(plans.owner)
     app.include_router(clock.router)
+    app.include_router(tts.router)
     app.include_router(webhooks.router)
 
     app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")

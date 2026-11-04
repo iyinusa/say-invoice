@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b6b46">
   <meta name="robots" content="noindex">
-  <title>Invoice {{ inv.number }} from {{ business_name }}</title>
+  <title>{{ T.invoice_kicker.format(number=inv.number) }} · {{ business_name }}</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6b46'/%3E%3Cpath d='M16 19a3.5 3.5 0 0 0 3.5-3.5V9a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 16 19Zm6-4a6 6 0 0 1-12 0' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 21v4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/app.css?v={{ v }}">
   <link rel="stylesheet" href="/static/quote.css?v={{ v }}">
-  <script>window.PLAN = {{ {"token": inv.public_token, "initial": initial, "business": business_name, "owner": owner} | tojson }};</script>
+  <script>window.PLAN = {{ {"token": inv.public_token, "initial": initial, "business": business_name, "owner": owner, "T": T} | tojson }};</script>
   <script defer src="/static/plan.js?v={{ v }}"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
 </head>
@@ -18,7 +18,7 @@
 
   <header class="doc-head">
     <div>
-      <p class="doc-kicker">Invoice {{ inv.number }}</p>
+      <p class="doc-kicker">{{ T.invoice_kicker.format(number=inv.number) }}</p>
       <h1>{{ business_name }}</h1>
     </div>
     <span class="pill" :class="pillClass()" x-text="pillText()"></span>
@@ -26,51 +26,50 @@
 
   <section class="card doc-card">
     <div class="doc-meta">
-      {% if inv.client.name %}<div><span>For</span><b>{{ inv.client.name }}</b></div>{% endif %}
-      <div><span x-text="state.agreed.length ? 'Next payment' : 'Due'"></span><b x-text="nextDue() || '{{ due }}'"></b></div>
+      {% if inv.client.name %}<div><span>{{ T.for }}</span><b>{{ inv.client.name }}</b></div>{% endif %}
+      <div><span x-text="state.agreed.length ? tr('next_payment') : tr('due')"></span><b x-text="nextDue() || {{ due | tojson | forceescape }}"></b></div>
     </div>
     <table class="lines">
-      <thead><tr><th scope="col">Work</th><th scope="col" class="r">Amount</th></tr></thead>
+      <thead><tr><th scope="col">{{ T.work }}</th><th scope="col" class="r">{{ T.amount }}</th></tr></thead>
       <tbody>
       {% for i in items %}<tr><td><b>{{ i.name }}</b></td><td class="r">{{ i.amount }}</td></tr>{% endfor %}
       </tbody>
     </table>
     <dl class="summary">
-      <div><dt>Invoice total</dt><dd>{{ total }}</dd></div>
-      <div x-show="state.has_paid"><dt>Paid so far</dt><dd x-text="state.paid"></dd></div>
-      <div class="grand"><dt>Still to pay</dt><dd x-text="state.balance"></dd></div>
+      <div><dt>{{ T.invoice_total }}</dt><dd>{{ total }}</dd></div>
+      <div x-show="state.has_paid"><dt>{{ T.paid_so_far }}</dt><dd x-text="state.paid"></dd></div>
+      <div class="grand"><dt>{{ T.still_to_pay }}</dt><dd x-text="state.balance"></dd></div>
     </dl>
   </section>
 
   <!-- An agreed plan -->
   <section class="card action" x-show="state.agreed.length && state.status !== 'paid'">
-    <h2>Your payment plan</h2>
+    <h2>{{ T.your_plan }}</h2>
     <ol class="schedule">
       <template x-for="(row, n) in state.agreed" :key="n">
         <li :class="row.status">
           <span class="sch-dot" aria-hidden="true" x-text="row.status === 'paid' ? '✓' : n + 1"></span>
           <span class="sch-date" x-text="row.due"></span>
           <span class="sch-amount" x-text="row.amount"></span>
-          <span class="sch-status" x-text="{ paid: 'Paid', late: 'Due now', upcoming: 'Upcoming' }[row.status]"></span>
+          <span class="sch-status" x-text="{ paid: tr('status_paid'), late: tr('status_due_now'), upcoming: tr('status_upcoming') }[row.status]"></span>
         </li>
       </template>
     </ol>
-    <a class="btn primary big" :href="state.pay_url" target="_blank" rel="noopener" x-show="state.pay_url">Pay an instalment</a>
-    <p class="fine">Pay any amount from the PayPal invoice: card or PayPal. This page updates once you've paid.</p>
+    <a class="btn primary big" :href="state.pay_url" target="_blank" rel="noopener" x-show="state.pay_url">{{ T.pay_instalment }}</a>
+    <p class="fine">{{ T.pay_any_amount }}</p>
   </section>
 
   <!-- Paid -->
   <section class="card action booked" x-show="state.status === 'paid'" role="status">
     <div class="booked-tick" aria-hidden="true">✓</div>
-    <h2>Paid in full</h2>
-    <p>Thank you!</p>
+    <h2>{{ T.paid_in_full }}</h2>
+    <p>{{ T.thank_you }}</p>
   </section>
 
   <!-- Propose a plan -->
   <section class="card chat" x-show="!state.agreed.length && ['owed', 'overdue', 'awaiting_owner'].includes(state.status)">
-    <h2>Can't pay it all at once?</h2>
-    <p class="muted chat-intro" x-show="!messages.length">Suggest how you'd like to split it, for example
-      “half now and half at the end of the month”, and get an answer straight away.</p>
+    <h2>{{ T.cant_pay }}</h2>
+    <p class="muted chat-intro" x-show="!messages.length">{{ T.plan_intro }}</p>
     <ol class="thread" x-show="messages.length" aria-live="polite">
       <template x-for="m in messages" :key="m.id">
         <li class="msg" :class="m.role">
@@ -85,30 +84,30 @@
                 </template>
               </ol>
               <button class="btn primary" x-show="m.offer_status === 'open'" :disabled="busy" @click="agree(m)"
-                      x-text="busy ? 'Setting it up…' : 'Agree this plan'"></button>
-              <p class="offer-note" x-show="m.offer_status === 'superseded'">Replaced by a newer plan</p>
+                      x-text="busy ? tr('setting_up') : tr('agree_plan')"></button>
+              <p class="offer-note" x-show="m.offer_status === 'superseded'">{{ T.replaced_plan }}</p>
             </div>
           </template>
         </li>
       </template>
     </ol>
     <p class="waiting" x-show="state.status === 'awaiting_owner'" role="status">
-      <span class="dot" aria-hidden="true"></span><span x-text="`${window.PLAN.owner} is looking at your request. This page updates when they reply.`"></span>
+      <span class="dot" aria-hidden="true"></span><span x-text="tr('waiting_owner', { owner: window.PLAN.owner })"></span>
     </p>
     <form class="composer" @submit.prevent="send()" x-show="state.status !== 'awaiting_owner'">
-      <label for="ask" class="sr-only">Your message</label>
+      <label for="ask" class="sr-only">{{ T.your_message }}</label>
       <div class="input-group grow">
         <input id="ask" type="text" x-model="draft" maxlength="500" autocomplete="off"
-               placeholder="e.g. Half now, half at the end of the month?" :disabled="sending">
+               placeholder="{{ T.plan_placeholder }}" :disabled="sending">
       </div>
-      <button class="btn primary compact" :disabled="sending || !draft.trim()" x-text="sending ? '…' : 'Send'"></button>
+      <button class="btn primary compact" :disabled="sending || !draft.trim()" x-text="sending ? '…' : tr('send')"></button>
     </form>
     <p class="error" role="alert" x-show="error" x-text="error"></p>
-    <p class="fine">Answers come from {{ business_name }}'s assistant, within limits {{ owner }} has set.</p>
-    <a class="btn ghost" :href="state.pay_url" target="_blank" rel="noopener" x-show="state.pay_url">Or pay in full now</a>
+    <p class="fine">{{ T.answers_from.format(business=business_name, owner=owner) }}</p>
+    <a class="btn ghost" :href="state.pay_url" target="_blank" rel="noopener" x-show="state.pay_url">{{ T.or_pay_full }}</a>
   </section>
 
-  <footer class="doc-foot">Payments by PayPal · Sent with SayInvoice</footer>
+  <footer class="doc-foot">{{ T.footer }}</footer>
 </main>
 <noscript><p class="noscript">This page needs JavaScript to agree a plan.</p></noscript>
 </body>

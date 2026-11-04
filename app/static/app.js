@@ -8,6 +8,27 @@ const SETTLED = ["paid", "cancelled", "refunded"];
 // Currencies PayPal Invoicing accepts (mirrors app/agents/parser_rules.py).
 const PAYPAL_CURRENCIES = "AUD BRL CAD CHF CNY CZK DKK EUR GBP HKD HUF ILS JPY MXN MYR NOK NZD PHP PLN RUB SEK SGD THB TWD USD".split(" ");
 
+// Spoken replies: "send" sends (after a visible countdown), "change" hands control back.
+const SAY_SEND = /\b(send( it)?|yes|yeah|yep|go( ahead)?|do it|confirm|ok(ay)?)\b/i;
+const SAY_STOP = /\b(no|stop|cancel|change|wait|edit|hold on|not yet)\b/i;
+const SEND_COUNTDOWN = 3;
+
+function readStore(key, fallback) {
+  try {
+    const v = localStorage.getItem(key);
+    return v === null ? fallback : JSON.parse(v);
+  } catch {
+    return fallback;
+  }
+}
+function writeStore(key, value) {
+  try {
+    localStorage.setItem(key, JSON.stringify(value));
+  } catch {
+    /* private mode: the toggle just isn't remembered */
+  }
+}
+
 // Buzz the phone, but only once the user has touched the page (browsers block it before).
 function buzz(pattern) {
   if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(pattern);
@@ -55,6 +76,9 @@ window.sayInvoice = () => ({
   draft: null,
   key: "",
   noteOpen: false,
+  clientSource: "",
+  suggestions: [],
+  clientOptions: [],
   mode: "invoice",
   quote: null,
   jobs: [],
@@ -86,6 +110,18 @@ window.sayInvoice = () => ({
   cancelArmed: false,
   payOpen: false,
   pay: { amount: "", method: "CASH" },
+
+  // voice read-back
+  readBack: readStore("si.readback", true),
+  voiceState: "idle", // idle | speaking | listening | countdown
+  heard: "",
+  countdown: 0,
+  countdownTimer: null,
+  recognizer: null,
+  audioEl: null,
+  language: "en",
+  canListen: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
+  canSpeak: "speechSynthesis" in window || window.SAYINVOICE.ttsEngine === "kokoro",
 
   // demo clock
   clockInfo: null,
@@ -119,6 +155,151 @@ window.sayInvoice = () => ({
     this.loadHome();
     this.loadReminders();
     this.loadClock();
+  },
+
+  // ── voice read-back ───────────────────────────────────────────────────
+  toggleReadBack() {
+    this.readBack = !this.readBack;
+    writeStore("si.readback", this.readBack);
+    if (!this.readBack) this.stopVoice();
+  },
+  // iOS only lets a page talk after a tap: say nothing, once, inside a tap.
+  primeSpeech() {
+    try {
+      if ("speechSynthesis" in window && !this._primed) {
+        window.speechSynthesis.speak(new SpeechSynthesisUtterance(""));
+        this._primed = true;
+      }
+      if (!this.audioEl) this.audioEl = new Audio();
+    } catch {
+      /* no speech on this device */
+    }
+  },
+  speechLang() {
+    const lang = (this.language || "en").toLowerCase();
+    return lang === "en" ? (navigator.language?.startsWith("en") ? navigator.language : "en-GB") : lang;
+  },
+  readBackText() {
+    if (this.question) return this.question;
+    if (!this.canSend()) return this.blocker();
+    const who = this.card.client_name.trim() || this.card.client_email.trim() || "the client";
+    if (this.mode === "quote") {
+      const dep = this.depositCents() > 0 ? `, with a ${this.depositPct()} percent deposit` : "";
+      return `Quote for ${this.money(this.totalCents())} to ${who}${dep}. Say send to create the link, or change to edit it.`;
+    }
+    if (this.mode === "final") {
+      const paid = this.depositPaidCents() > 0 ? ` after the ${this.money(this.depositPaidCents())} deposit` : "";
+      return `Final invoice for ${who}: ${this.money(this.finalBalanceCents())} to pay${paid}. Say send to send it, or change to edit it.`;
+    }
+    const due = this.card.due_date
+      ? `due ${new Date(this.card.due_date).toLocaleDateString("en-GB", { weekday: "long", day: "numeric", month: "long" })}`
+      : this.dueHint().replace("Empty means ", "");
+    return `Invoice for ${this.money(this.totalCents())} to ${who}, ${due}. Say send to send it, or change to edit it.`;
+  },
+  async speak(text) {
+    this.voiceState = "speaking";
+    // Kokoro on the server when it's turned on; the phone's own voice otherwise.
+    if (window.SAYINVOICE.ttsEngine === "kokoro") {
+      try {
+        const q = new URLSearchParams({ text, lang: this.speechLang() });
+        const resp = await fetch(`/api/tts?${q}`);
+        if (resp.ok) {
+          const url = URL.createObjectURL(await resp.blob());
+          const el = this.audioEl || new Audio();
+          el.src = url;
+          await new Promise((resolve) => { el.onended = el.onerror = resolve; el.play().catch(resolve); });
+          URL.revokeObjectURL(url);
+          return;
+        }
+      } catch {
+        /* fall through to the phone's voice */
+      }
+    }
+    if (!("speechSynthesis" in window)) return;
+    // Whatever the device's voice does (errors, never says "end"), this always finishes.
+    await new Promise((resolve) => {
+      try {
+        const u = new SpeechSynthesisUtterance(text);
+        u.lang = this.speechLang();
+        const voice = window.speechSynthesis.getVoices().find((v) => v.lang?.toLowerCase().startsWith(u.lang.slice(0, 2).toLowerCase()));
+        if (voice) u.voice = voice;
+        u.rate = 1.02;
+        u.onend = u.onerror = resolve;
+        window.speechSynthesis.cancel();
+        window.speechSynthesis.speak(u);
+        setTimeout(resolve, 15000);
+      } catch {
+        resolve();
+      }
+    });
+  },
+  // Listen for one short spoken reply. (Not `listen()`: that name is the live-updates stream.)
+  hear() {
+    const Rec = window.SpeechRecognition || window.webkitSpeechRecognition;
+    if (!Rec) return Promise.resolve("");
+    return new Promise((resolve) => {
+      const rec = new Rec();
+      this.recognizer = rec;
+      rec.lang = this.speechLang();
+      rec.interimResults = false;
+      rec.maxAlternatives = 3;
+      let said = "";
+      rec.onresult = (e) => { said = Array.from(e.results[0]).map((a) => a.transcript).join(" | "); };
+      rec.onend = rec.onerror = () => resolve(said);
+      try { rec.start(); } catch { resolve(""); }
+      setTimeout(() => { try { rec.stop(); } catch { /* already stopped */ } }, 6000);
+    });
+  },
+  async readItBack() {
+    if (this.voiceState !== "idle" || !this.canSpeak) return;
+    this.primeSpeech();
+    try {
+      await this.speak(this.readBackText());
+    } catch {
+      this.voiceState = "idle"; // a broken voice must never leave the card stuck
+      return;
+    }
+    if (this.voiceState !== "speaking") return; // stopped meanwhile
+    if (!this.canSend() || !this.canListen) {
+      this.voiceState = "idle";
+      return;
+    }
+    this.voiceState = "listening";
+    let said = "";
+    try {
+      said = await this.hear();
+    } catch {
+      said = "";
+    }
+    if (this.voiceState !== "listening") return;
+    this.heard = said.split(" | ")[0] || "";
+    // "Stop" beats "send": a muddled "send, no wait" never sends.
+    if (said && !SAY_STOP.test(said) && SAY_SEND.test(said)) return this.startCountdown();
+    this.voiceState = "idle";
+  },
+  autoReadBack() {
+    if (this.readBack && this.screen === "preview") setTimeout(() => this.readItBack(), 250);
+  },
+  startCountdown() {
+    this.voiceState = "countdown";
+    this.countdown = SEND_COUNTDOWN;
+    clearInterval(this.countdownTimer);
+    this.countdownTimer = setInterval(() => {
+      this.countdown -= 1;
+      if (this.countdown <= 0) {
+        clearInterval(this.countdownTimer);
+        this.voiceState = "idle";
+        if (this.canSend() && !this.busy) this.send();
+      }
+    }, 1000);
+  },
+  stopVoice() {
+    clearInterval(this.countdownTimer);
+    try { this.recognizer?.abort(); } catch { /* not listening */ }
+    try { window.speechSynthesis?.cancel(); } catch { /* not speaking */ }
+    try { this.audioEl?.pause(); } catch { /* no audio */ }
+    this.voiceState = "idle";
+    this.countdown = 0;
   },
 
   // ── demo clock ────────────────────────────────────────────────────────
@@ -565,6 +746,7 @@ window.sayInvoice = () => ({
 
   // ── recording ─────────────────────────────────────────────────────────
   async toggleRecording(target) {
+    this.primeSpeech();
     if (this.recording) return this.stopRecording();
     this.error = "";
     if (!navigator.mediaDevices?.getUserMedia || !window.MediaRecorder) {
@@ -645,6 +827,7 @@ window.sayInvoice = () => ({
   },
 
   async parseTyped() {
+    this.primeSpeech();
     await this.readJob({ text: this.typed.trim() });
   },
 
@@ -654,6 +837,7 @@ window.sayInvoice = () => ({
     try {
       this.loadCard(await this.callParse(input));
       this.screen = "preview";
+      this.autoReadBack();
     } catch (e) {
       this.screen = "record";
       this.error = e.message;
@@ -672,6 +856,7 @@ window.sayInvoice = () => ({
       // Send the card as edited, so hand fixes survive the model's update.
       this.loadCard(await this.callParse({ ...input, previous: this.cardToDraft() }), { keepKey: true });
       this.answer = "";
+      this.autoReadBack();
     } catch (e) {
       this.error = e.message;
     } finally {
@@ -682,9 +867,13 @@ window.sayInvoice = () => ({
   loadCard(result, { keepKey = false } = {}) {
     // A follow-up on a final invoice stays a final invoice.
     if (!(keepKey && this.mode === "final")) this.mode = result.mode;
+    this.language = result.language || "en";
+    this.clientSource = result.client_source || "";
+    this.suggestions = result.client_suggestions || [];
     this.matchedJob = this.mode === "invoice" && !keepKey ? this.matchJob(result) : this.matchedJob;
     this.card = {
       deposit_pct: result.deposit_pct != null ? String(Number(result.deposit_pct)) : "",
+      language: result.client_language || (result.language || "en").split("-")[0],
       job_date: "",
       client_name: result.client_name,
       client_email: result.client_email,
@@ -739,6 +928,34 @@ window.sayInvoice = () => ({
       uncertain_fields: [],
       follow_up_question: this.question,
     };
+  },
+
+  // ── client memory ─────────────────────────────────────────────────────
+  pickClient(c) {
+    Object.assign(this.card, { client_name: c.name, client_email: c.email, language: c.language || this.card.language });
+    this.clientSource = "saved";
+    this.suggestions = [];
+    this.confirmField("client_email");
+    this.missing = this.missing.filter((f) => f !== "client_email");
+    if (this.question && !this.missing.length) this.question = "";
+  },
+  lookupClients() {
+    clearTimeout(this._clientTimer);
+    const q = this.card.client_name.trim();
+    if (q.length < 2) return;
+    this._clientTimer = setTimeout(async () => {
+      try {
+        const resp = await fetch(`/api/clients?q=${encodeURIComponent(q)}`);
+        if (resp.ok) this.clientOptions = await resp.json();
+      } catch {
+        /* suggestions are a nicety */
+      }
+    }, 200);
+  },
+  useTypedClient() {
+    const typed = this.card.client_name.trim().toLowerCase();
+    const c = this.clientOptions.find((o) => o.name.toLowerCase() === typed);
+    if (c && !this.card.client_email) this.pickClient(c);
   },
 
   // ── preview card ──────────────────────────────────────────────────────
@@ -845,6 +1062,7 @@ window.sayInvoice = () => ({
 
   // ── send ──────────────────────────────────────────────────────────────
   async send() {
+    this.stopVoice();
     if (this.mode === "quote") return this.createQuote();
     if (this.mode === "final") return this.sendFinal();
     if (!this.canSend() || this.busy) return;
@@ -868,6 +1086,7 @@ window.sayInvoice = () => ({
       notes: this.card.notes,
       transcript: this.transcript,
       draft: this.draft,
+      language: this.card.language || "en",
     };
     try {
       const resp = await fetch("/api/invoices", {
@@ -911,6 +1130,7 @@ window.sayInvoice = () => ({
       notes: this.card.notes,
       transcript: this.transcript,
       draft: this.draft,
+      language: this.card.language || "en",
     };
     try {
       const resp = await fetch("/api/quotes", {
@@ -1065,13 +1285,15 @@ window.sayInvoice = () => ({
   },
 
   reset() {
+    this.stopVoice();
     this.stopRecording();
     this.stopChecking();
     this.loadJobs();
     this.loadHome();
     Object.assign(this, {
       screen: "record", error: "", busy: false, typed: "", typing: false, answer: "",
-      card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [], deposit_pct: "", job_date: "" },
+      card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [], deposit_pct: "", job_date: "", language: "en" },
+      clientSource: "", suggestions: [], clientOptions: [],
       flags: [], missing: [], question: "", warnings: [], transcript: "", draft: null, key: "", noteOpen: false,
       mode: "invoice", quote: null, job: null, matchedJob: null,
       invoice: null, qrOpen: false, qrError: false, copied: false,

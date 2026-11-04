@@ -324,21 +324,26 @@ def check_offer(policy: Policy, base: QuoteTerms, offer: Offer, *, today: date) 
 
 # ── the agent's words ────────────────────────────────────────────────────────
 
-_SYMBOLS = {"£": "GBP", "$": "USD", "€": "EUR"}
-_NUMBER = r"(\d{1,3}(?:,\d{3})+|\d+)(?:\.(\d{1,2}))?"
-_AMOUNT = re.compile(
-    rf"(?:[£$€]\s?|\b(?:GBP|USD|EUR)\s?){_NUMBER}"
-    rf"|\b{_NUMBER}\s?(?:pounds?|quid|euros?|dollars?|bucks|GBP|USD|EUR)\b",
-    re.IGNORECASE,
-)
+# A number in either style: 1,250.00 (UK/US) or 1.250,00 / 1 250,00 (most of Europe).
+# Groups of three are thousands; one or two digits after the last separator are pennies.
+_NUM = r"(\d{1,3}(?:[.,\u00a0\u202f ]\d{3})+(?:[.,]\d{1,2})?|\d+(?:[.,]\d{1,2})?)(?!\d)"
+_BEFORE = r"(?:[£$€]|\b(?:GBP|USD|EUR|PLN)\b)\s?"
+_AFTER = r"\s?(?:[£$€]|zł|(?:GBP|USD|EUR|PLN|pounds?|quid|euros?|dollars?|bucks|złotych|zlotych)\b)"
+_AMOUNT = re.compile(rf"{_BEFORE}{_NUM}|{_NUM}{_AFTER}", re.IGNORECASE)
+
+
+def _to_decimal(token: str) -> Decimal:
+    token = token.strip()
+    tail = re.search(r"[.,](\d{1,2})$", token)
+    if tail:
+        whole = re.sub(r"\D", "", token[: tail.start()])
+        return Decimal(f"{whole or '0'}.{tail.group(1).ljust(2, '0')}")
+    return Decimal(re.sub(r"\D", "", token) + ".00")
 
 
 def amounts_in(text: str) -> list[Decimal]:
-    found = []
-    for m in _AMOUNT.finditer(text):
-        whole, cents = (m.group(1), m.group(2)) if m.group(1) else (m.group(3), m.group(4))
-        found.append(Decimal(whole.replace(",", "") + "." + (cents or "0").ljust(2, "0")))
-    return found
+    """Money amounts written in `text`, in any of the formats a client might read."""
+    return [_to_decimal(m.group(1) or m.group(2)) for m in _AMOUNT.finditer(text)]
 
 
 def check_reply(

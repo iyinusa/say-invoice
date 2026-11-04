@@ -101,6 +101,12 @@ class ParseResult(BaseModel):
     uncertain_fields: list[str]
     follow_up_question: str
     warnings: list[str]
+    # Client memory: "saved" when the name matched a client you've invoiced before.
+    client_source: str = ""
+    # Who the client is in language terms: their saved language, else the one spoken.
+    client_language: str = "en"
+    # Several saved clients could be meant ("Patel"): offered as choices on the card.
+    client_suggestions: list[dict[str, str]] = Field(default_factory=list)
     # The model's raw draft. The UI sends it back as `previous` with the answer
     # to the follow-up question, and it is stored as the invoice's raw_ai_json.
     draft: ParsedJob

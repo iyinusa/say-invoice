@@ -220,6 +220,11 @@ def test_a_free_extra_job_is_sent_to_the_owner() -> None:
         ("about 120 quid, or 95 pounds", ["120.00", "95.00"]),
         ("GBP 40 for parts", ["40.00"]),
         ("a balance of 100.00 GBP", ["100.00"]),  # the code after the number counts too
+        ("Il reste 145,00 € à payer", ["145.00"]),  # European decimal comma
+        ("razem 1.250,00 zł", ["1250.00"]),
+        ("faltan 39,50 EUR", ["39.50"]),
+        ("€ 1 250,00 au total", ["1250.00"]),
+        ("2 Stunden, 10% Rabatt", []),
         ("10% off, 2 hours, Saturday the 7th", []),
     ],
 )

@@ -21,6 +21,8 @@ from decimal import Decimal
 from typing import Any, Protocol
 
 from app.deals.guard import amounts_in
+from app.i18n import LANGUAGES, t
+from app.i18n import base as base_lang
 from app.logging_config import get_logger
 from app.money import display, to_money
 from app.settings import Settings
@@ -52,6 +54,7 @@ class ReminderFacts:
     # On a payment plan: the instalment that's late (what's owed by its date), and that date.
     instalment: Decimal | None = None
     instalment_due: date | None = None
+    language: str = "en"
 
 
 @dataclass
@@ -68,37 +71,22 @@ class ReminderWriter(Protocol):
 
 
 def subject_for(f: ReminderFacts) -> str:
-    lead = {1: "Reminder", 2: "Overdue", 3: "Final reminder"}[f.step]
-    return f"{lead}: invoice {f.number} from {f.business}"
+    return t(f.language, f"subject_{f.step}", number=f.number, business=f.business)
 
 
 def template_reminder(f: ReminderFacts, reason: str = "") -> ReminderDraft:
-    """Plain, safe wording for each rung. Used whenever the agent can't be."""
-    who = f.client_name.split()[0] if f.client_name else "there"
+    """Plain, safe wording for each rung, in the client's language, when the agent can't write."""
+    lang = f.language
+    who = f.client_name.split()[0] if f.client_name else t(lang, "there")
     if f.instalment is not None and f.instalment_due is not None:
-        late = display(f.instalment, f.currency)
-        when = f"{f.instalment_due:%-d %b}"
-        body = {
-            1: f"Hi {who}, just a friendly reminder that your payment plan instalment of "
-               f"{late} for invoice {f.number} was due on {when}. You can pay it from this "
-               "email. Thank you!",
-            2: f"Hi {who}, your instalment of {late} for invoice {f.number} (due {when}) hasn't "
-               "come through yet. Could you pay it this week?",
-            3: f"Hi {who}, this is a final reminder about the {late} instalment for invoice "
-               f"{f.number}, due {when}. Please pay within 7 days, or reply to talk about it.",
-        }[f.step]  # fmt: skip
-        trace = {"reason": reason} if reason else {}
-        note = f"{body} {f.owner}".strip()
-        return ReminderDraft(subject=subject_for(f), note=note, source="template", trace=trace)
-    due = display(f.balance, f.currency)
-    body = {
-        1: f"Hi {who}, just a friendly reminder that invoice {f.number} for {due} is now due. "
-           "You can pay by card or PayPal from this email. Thank you!",
-        2: f"Hi {who}, invoice {f.number} for {due} is now {f.days_overdue} days overdue. "
-           "Could you pay it this week? You can pay by card or PayPal from this email.",
-        3: f"Hi {who}, this is a final reminder that invoice {f.number} for {due} is still "
-           "unpaid. Please pay within 7 days, or reply if you'd like to talk about it.",
-    }[f.step]  # fmt: skip
+        d = f.instalment_due
+        when = f"{d:%-d %b}" if base_lang(lang) == "en" else f"{d:%-d.%m}"
+        amount = display(f.instalment, f.currency)
+        body = t(lang, f"instalment_{f.step}", name=who, number=f.number, amount=amount, date=when)
+    else:
+        amount = display(f.balance, f.currency)
+        body = t(lang, f"reminder_{f.step}", name=who, number=f.number, amount=amount,
+                 days=f.days_overdue)  # fmt: skip
     return ReminderDraft(
         subject=subject_for(f),
         note=f"{body} {f.owner}".strip(),
@@ -129,6 +117,8 @@ You chase unpaid invoices for {business}, a small trades business, politely.
 
 Invoice {number} (PayPal id {paypal_id}) for {client}: {days} days overdue.{plan}
 Tone for this reminder: {tone_name}. {tone_guide}
+Write the note in {language}, the client's language, using the polite form of
+address where the language has one.
 
 1. Call get_invoice with the PayPal id to check it is still unpaid and read the
    exact amount due. Don't rely on anything else for amounts.
@@ -229,6 +219,7 @@ class AdkChaseWriter(AbstractAsyncContextManager["AdkChaseWriter"]):
                 tone_guide=tone_guide,
                 owner=f.owner,
                 plan=plan_hint(f),
+                language=LANGUAGES.get(base_lang(f.language), "English"),
             ),  # fmt: skip
             tools=[self.toolset],
             generate_content_config=self._config,

@@ -11,6 +11,7 @@ from fastapi.responses import HTMLResponse
 from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession
 
+from app import i18n
 from app.db import get_session
 from app.deals import negotiator, plans
 from app.deals.agent import DealAgentUnavailable, get_plan_model
@@ -18,11 +19,11 @@ from app.models import DealMessage, Invoice, Workspace
 from app.money import display
 from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.routers.invoices import current_workspace
-from app.routers.ui import ASSET_VERSION, templates
+from app.routers.ui import ASSET_VERSION, not_found_page, templates
 from app.schemas.quote import ClientMessageIn, DecisionIn
 from app.services import clock, payments
 from app.services.money_view import OPEN, balance, days_overdue, state
-from app.services.plan_links import current_due
+from app.services.plan_links import client_language, current_due
 
 public = APIRouter(prefix="/p", tags=["client"], include_in_schema=False)
 owner = APIRouter(prefix="/api/invoices", tags=["plans"])
@@ -48,26 +49,26 @@ async def _invoice_or_404(session: AsyncSession, token: str) -> Invoice:
     return inv
 
 
-def _schedule(priced: dict[str, object] | None, cur: str) -> list[dict[str, str]]:
+def _schedule(priced: dict[str, object] | None, cur: str, lang: str) -> list[dict[str, str]]:
     if not priced:
         return []
     return [
         {
-            "due": f"{date.fromisoformat(i['due']):%a %-d %b}",
+            "due": i18n.fmt_date(date.fromisoformat(i["due"]), lang, weekday=True),
             "amount": display(Decimal(i["amount"]), cur),
         }
         for i in priced["instalments"]  # type: ignore[union-attr]
     ]
 
 
-def client_view(m: DealMessage, cur: str) -> dict[str, object]:
+def client_view(m: DealMessage, cur: str, lang: str = "en") -> dict[str, object]:
     shown = m.offer_status in ("open", "accepted", "superseded") and m.priced is not None
     return {
         "id": m.id,
         "role": m.role,
         "text": m.text,
         "offer_status": m.offer_status if shown else "none",
-        "plan": _schedule(m.priced, cur) if shown else [],
+        "plan": _schedule(m.priced, cur, lang) if shown else [],
     }
 
 
@@ -75,6 +76,7 @@ async def _state(session: AsyncSession, inv: Invoice) -> dict[str, object]:
     msgs = await plans.history(session, inv)
     today = await _today_of(session, inv)
     st = state(inv, today)
+    lang = client_language(inv)
     agreed = []
     if inv.plan:
         covered = Decimal(0)
@@ -84,7 +86,7 @@ async def _state(session: AsyncSession, inv: Invoice) -> dict[str, object]:
             late = "late" if due < today else "upcoming"
             agreed.append(
                 {
-                    "due": f"{due:%a %-d %b}",
+                    "due": i18n.fmt_date(due, lang, weekday=True),
                     "amount": display(Decimal(row["amount"]), inv.currency),
                     "status": "paid" if inv.amount_paid >= covered else late,
                 }
@@ -97,7 +99,7 @@ async def _state(session: AsyncSession, inv: Invoice) -> dict[str, object]:
         "days_overdue": days_overdue(inv, today),
         "pay_url": inv.payer_view_url,
         "agreed": agreed,
-        "messages": [client_view(m, inv.currency) for m in msgs],
+        "messages": [client_view(m, inv.currency, lang) for m in msgs],
     }
 
 
@@ -107,21 +109,22 @@ async def plan_page(
 ) -> HTMLResponse:
     inv = await _by_token(session, token)
     if inv is None:
-        return templates.TemplateResponse(
-            request, "quote_missing.html", {"v": ASSET_VERSION}, status_code=404
-        )
+        return not_found_page(request)
     ws = await session.get(Workspace, inv.workspace_id)
     due = current_due(inv)
+    lang = i18n.base(client_language(inv))
     return templates.TemplateResponse(
         request,
         "plan.html",
         {
             "v": ASSET_VERSION,
             "inv": inv,
+            "lang": lang,
+            "T": i18n.strings(lang),
             "business_name": ws.business_name if ws else "",
             "owner": negotiator.first_name(ws) if ws else "the owner",
             "total": display(inv.total, inv.currency),
-            "due": f"{due:%-d %b %Y}" if due else "on receipt",
+            "due": i18n.fmt_date(due, lang, year=True) if due else "",
             "items": [
                 {"name": i.name, "amount": display(i.quantity * i.unit_amount, inv.currency)}
                 for i in inv.items
@@ -204,4 +207,4 @@ async def plan_decision(
         )
     except negotiator.OfferUnavailable as exc:
         raise HTTPException(409, str(exc).capitalize() + ".") from exc
-    return {"status": "ok", "message": client_view(reply, inv.currency)}
+    return {"status": "ok", "message": client_view(reply, inv.currency, client_language(inv))}

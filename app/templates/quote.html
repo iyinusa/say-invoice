@@ -1,15 +1,15 @@
 <!doctype html>
-<html lang="en">
+<html lang="{{ lang }}">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b6b46">
   <meta name="robots" content="noindex">
-  <title>Quote {{ q.number }} from {{ business_name }}</title>
+  <title>{{ T.quote_kicker.format(number=q.number) }} · {{ business_name }}</title>
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6b46'/%3E%3Cpath d='M16 19a3.5 3.5 0 0 0 3.5-3.5V9a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 16 19Zm6-4a6 6 0 0 1-12 0' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 21v4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/app.css?v={{ v }}">
   <link rel="stylesheet" href="/static/quote.css?v={{ v }}">
-  <script>window.QUOTE = {{ {"token": q.public_token, "initial": initial, "business": business_name, "owner": owner} | tojson }};</script>
+  <script>window.QUOTE = {{ {"token": q.public_token, "initial": initial, "business": business_name, "owner": owner, "T": T, "lang": lang} | tojson }};</script>
   <script defer src="/static/quote.js?v={{ v }}"></script>
   <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.14.9/dist/cdn.min.js"></script>
 </head>
@@ -18,7 +18,7 @@
 
   <header class="doc-head">
     <div>
-      <p class="doc-kicker">Quote {{ q.number }}</p>
+      <p class="doc-kicker">{{ T.quote_kicker.format(number=q.number) }}</p>
       <h1>{{ business_name }}</h1>
     </div>
     <span class="pill" :class="pillClass()" x-text="pillText()"></span>
@@ -26,18 +26,18 @@
 
   <section class="card doc-card">
     <div class="doc-meta">
-      {% if q.client_name %}<div><span>Prepared for</span><b>{{ q.client_name }}</b></div>{% endif %}
-      <div><span>Valid until</span><b>{{ q.valid_until.strftime('%-d %b %Y') }}</b></div>
-      {% if q.job_date %}<div><span>Job date</span><b>{{ q.job_date.strftime('%a %-d %b') }}</b></div>{% endif %}
+      {% if q.client_name %}<div><span>{{ T.prepared_for }}</span><b>{{ q.client_name }}</b></div>{% endif %}
+      <div><span>{{ T.valid_until }}</span><b>{{ valid_until }}</b></div>
+      {% if job_date %}<div><span>{{ T.job_date }}</span><b>{{ job_date }}</b></div>{% endif %}
     </div>
 
     <table class="lines">
-      <thead><tr><th scope="col">Work</th><th scope="col" class="r">Amount</th></tr></thead>
+      <thead><tr><th scope="col">{{ T.work }}</th><th scope="col" class="r">{{ T.amount }}</th></tr></thead>
       <tbody>
       {% for ln in lines %}
         <tr>
           <td>
-            <b>{{ ln.name }}</b>{% if ln.is_material %} <span class="tag">Materials</span>{% endif %}
+            <b>{{ ln.name }}</b>{% if ln.is_material %} <span class="tag">{{ T.materials }}</span>{% endif %}
             {% if ln.description %}<small>{{ ln.description }}</small>{% endif %}
             <small>{{ ln.qty }}{% if ln.unit == 'hours' %} h{% endif %} × {{ ln.price }}</small>
           </td>
@@ -48,22 +48,21 @@
     </table>
 
     <dl class="summary">
-      {% if has_discount %}<div><dt>Discount ({{ discount_pct }}% off labour)</dt><dd>−{{ discount }}</dd></div>{% endif %}
-      <div class="grand"><dt>Total</dt><dd>{{ total }}</dd></div>
+      {% if has_discount %}<div><dt>{{ T.discount_label.format(pct=discount_pct) }}</dt><dd>−{{ discount }}</dd></div>{% endif %}
+      <div class="grand"><dt>{{ T.total }}</dt><dd>{{ total }}</dd></div>
       {% if has_deposit %}
-      <div><dt>Deposit to book ({{ deposit_pct }}%)</dt><dd>{{ deposit }}</dd></div>
-      <div><dt>Balance after the job</dt><dd>{{ balance }}</dd></div>
+      <div><dt>{{ T.deposit_to_book.format(pct=deposit_pct) }}</dt><dd>{{ deposit }}</dd></div>
+      <div><dt>{{ T.balance_after }}</dt><dd>{{ balance }}</dd></div>
       {% endif %}
     </dl>
 
-    {% if q.note %}<p class="said"><span>Note from {{ business_name }}</span>{{ q.note }}</p>{% endif %}
+    {% if q.note %}<p class="said"><span>{{ T.note_from.format(business=business_name) }}</span>{{ q.note }}</p>{% endif %}
   </section>
 
   <!-- Ask for a change: the Deal Agent, inside the owner's rules -->
   <section class="card chat" x-show="['sent', 'negotiating', 'awaiting_owner'].includes(state.status)">
-    <h2>Ask for a change</h2>
-    <p class="muted chat-intro" x-show="!messages.length">A different price, leaving something out, another day?
-      Ask here and get an answer straight away.</p>
+    <h2>{{ T.ask_change }}</h2>
+    <p class="muted chat-intro" x-show="!messages.length">{{ T.ask_intro }}</p>
     <ol class="thread" x-show="messages.length" aria-live="polite">
       <template x-for="m in messages" :key="m.id">
         <li class="msg" :class="m.role">
@@ -73,84 +72,84 @@
             <div class="offer" :class="m.offer_status">
               <ul class="offer-lines">
                 <template x-for="ln in m.offer.lines"><li><span x-text="ln.name"></span><span x-text="ln.total"></span></li></template>
-                <li class="minus" x-show="m.offer.has_discount"><span x-text="`${m.offer.discount_pct}% off labour`"></span><span x-text="`−${m.offer.discount}`"></span></li>
+                <li class="minus" x-show="m.offer.has_discount"><span x-text="tr('discount_label', { pct: m.offer.discount_pct })"></span><span x-text="`−${m.offer.discount}`"></span></li>
               </ul>
-              <p class="offer-removed" x-show="m.offer.removed.length" x-text="`Without: ${m.offer.removed.join(', ')}`"></p>
-              <p class="offer-date" x-show="m.offer.job_date" x-text="`Job date: ${m.offer.job_date}`"></p>
-              <div class="offer-total"><span>New total</span><b x-text="m.offer.total"></b></div>
-              <p class="offer-deposit" x-show="m.offer.has_deposit" x-text="`Deposit to book: ${m.offer.deposit} (${m.offer.deposit_pct}%)`"></p>
+              <p class="offer-removed" x-show="m.offer.removed.length" x-text="tr('without', { items: m.offer.removed.join(', ') })"></p>
+              <p class="offer-date" x-show="m.offer.job_date" x-text="tr('job_date_line', { date: m.offer.job_date })"></p>
+              <div class="offer-total"><span>{{ T.new_total }}</span><b x-text="m.offer.total"></b></div>
+              <p class="offer-deposit" x-show="m.offer.has_deposit" x-text="tr('deposit_line', { amount: m.offer.deposit, pct: m.offer.deposit_pct })"></p>
               <button class="btn primary" x-show="m.offer_status === 'open'" :disabled="busy" @click="acceptOffer(m)"
-                      x-text="busy ? 'Booking…' : (m.offer.has_deposit ? `Accept & pay ${m.offer.deposit} deposit` : 'Accept this offer')"></button>
-              <p class="offer-note" x-show="m.offer_status === 'superseded'">Replaced by a newer offer</p>
+                      x-text="busy ? tr('booking') : (m.offer.has_deposit ? tr('accept_pay_deposit', { amount: m.offer.deposit }) : tr('accept_offer'))"></button>
+              <p class="offer-note" x-show="m.offer_status === 'superseded'">{{ T.replaced_offer }}</p>
             </div>
           </template>
         </li>
       </template>
     </ol>
     <p class="waiting" x-show="state.status === 'awaiting_owner'" role="status">
-      <span class="dot" aria-hidden="true"></span><span x-text="`${owner} is looking at your request. This page updates when they reply.`"></span>
+      <span class="dot" aria-hidden="true"></span><span x-text="tr('waiting_owner', { owner })"></span>
     </p>
     <form class="composer" @submit.prevent="send()" x-show="state.status !== 'awaiting_owner'">
-      <label for="ask" class="sr-only">Your message</label>
+      <label for="ask" class="sr-only">{{ T.your_message }}</label>
       <div class="input-group grow">
         <input id="ask" type="text" x-model="draft" maxlength="500" autocomplete="off"
-               placeholder="e.g. Could you do it for £100?" :disabled="sending">
+               placeholder="{{ T.quote_placeholder }}" :disabled="sending">
       </div>
-      <button class="btn primary compact" :disabled="sending || !draft.trim()" x-text="sending ? '…' : 'Send'"></button>
+      <button class="btn primary compact" :disabled="sending || !draft.trim()" x-text="sending ? '…' : tr('send')"></button>
     </form>
     <p class="error" role="alert" x-show="chatError" x-text="chatError"></p>
-    <p class="fine">Answers come from {{ business_name }}'s assistant, within prices {{ owner }} has set.</p>
+    <p class="fine">{{ T.answers_from.format(business=business_name, owner=owner) }}</p>
   </section>
 
   <!-- Open: accept -->
   <section class="card action" x-show="state.status === 'sent' || state.status === 'negotiating'">
-    <h2 x-text="openOffer() ? 'Or accept the original quote' : 'Happy with this?'"></h2>
+    <h2 x-text="openOffer() ? tr('or_accept_original') : tr('happy')"></h2>
     <form @submit.prevent="accept()">
       <div class="field">
-        <label class="field-label" for="email">Your email</label>
+        <label class="field-label" for="email">{{ T.your_email }}</label>
         <input id="email" class="control" type="email" x-model.trim="email" required autocomplete="email"
                inputmode="email" autocapitalize="off" spellcheck="false" placeholder="you@example.com">
-        <p class="field-help">PayPal sends your deposit request and receipt here.</p>
+        <p class="field-help">{{ T.email_help }}</p>
       </div>
       <p class="error" role="alert" x-show="error" x-text="error"></p>
       <button class="btn primary big" :disabled="busy || !email"
-              data-label="{% if has_deposit %}Accept &amp; pay {{ deposit }} deposit{% else %}Accept quote{% endif %}"
-              x-text="busy ? 'Booking…' : $el.dataset.label"></button>
-      <p class="fine">{% if has_deposit %}Pay securely by card or PayPal. The balance is invoiced when the job is done.{% else %}No deposit needed. You'll be invoiced when the job is done.{% endif %}</p>
+              data-label="{% if has_deposit %}{{ T.accept_pay_deposit.format(amount=deposit) }}{% else %}{{ T.accept_quote }}{% endif %}"
+              x-text="busy ? tr('booking') : $el.dataset.label"></button>
+      <p class="fine">{% if has_deposit %}{{ T.fine_deposit }}{% else %}{{ T.fine_no_deposit }}{% endif %}</p>
     </form>
   </section>
 
   <!-- Accepted: pay the deposit -->
   <section class="card action" x-show="state.status === 'accepted' && depositDue()">
-    <h2>Quote accepted. Pay the deposit to book.</h2>
-    <p class="muted" x-show="state.deposit?.status === 'partially_paid'" x-text="`${state.deposit?.paid} paid so far.`"></p>
+    <h2>{{ T.accepted_pay }}</h2>
+    <p class="muted" x-show="state.deposit?.status === 'partially_paid'" x-text="tr('paid_so_far_amount', { amount: state.deposit?.paid })"></p>
     <a class="btn primary big" :href="state.deposit?.pay_url" target="_blank" rel="noopener"
-       x-show="state.deposit?.pay_url" x-text="`Pay ${state.deposit_amount} deposit`"></a>
+       x-show="state.deposit?.pay_url" x-text="tr('pay_deposit', { amount: state.deposit_amount })"></a>
     <p class="error" role="alert" x-show="error" x-text="error"></p>
     <button class="btn" x-show="!state.deposit?.pay_url" :disabled="busy" @click="accept()"
-            x-text="busy ? 'Trying again…' : 'Try again'"></button>
+            x-text="busy ? tr('trying_again') : tr('try_again')"></button>
     <details class="qr-mini" x-show="state.deposit?.pay_url">
-      <summary>Pay on another phone</summary>
+      <summary>{{ T.pay_other_phone }}</summary>
       <img :src="`/q/${token}/deposit-qr.png`" alt="QR code to pay the deposit" width="220" height="220" loading="lazy">
     </details>
-    <p class="fine">This page updates by itself once you've paid.</p>
+    <p class="fine">{{ T.updates_itself }}</p>
   </section>
 
   <!-- Booked -->
   <section class="card action booked" x-show="state.status === 'accepted' && !depositDue()" role="status">
     <div class="booked-tick" aria-hidden="true">✓</div>
-    <h2>You're booked</h2>
-    <p x-text="state.deposit ? 'Deposit received. Thank you!' : 'Quote accepted. Thank you!'"></p>
-    <p class="muted">{{ business_name }} will be in touch about the job.</p>
+    <h2>{{ T.booked }}</h2>
+    <p x-text="state.deposit ? tr('deposit_received') : tr('accepted_thanks')"></p>
+    <p class="muted">{{ T.in_touch.format(business=business_name) }}</p>
   </section>
 
   <!-- Closed -->
   <section class="card action" x-show="state.status === 'expired' || state.status === 'declined'">
-    <h2 x-text="state.status === 'expired' ? 'This quote has expired' : 'This quote is closed'"></h2>
-    <p class="muted">Get in touch with {{ business_name }} for an up-to-date price.</p>
+    <h2 x-text="state.status === 'expired' ? tr('expired_title') : tr('closed_title')"></h2>
+    <p class="muted">{{ T.get_in_touch.format(business=business_name) }}</p>
   </section>
 
-  <footer class="doc-foot">Payments by PayPal · Sent with SayInvoice</footer>
+  <footer class="doc-foot">{{ T.footer }}</footer>
 </main>
 <noscript><p class="noscript">This page needs JavaScript to accept the quote.</p></noscript>
 </body>
