@@ -1,9 +1,11 @@
 from __future__ import annotations
 
 from collections.abc import AsyncIterator
+from pathlib import Path
 from typing import Any
 
 from sqlalchemy import MetaData
+from sqlalchemy.engine import make_url
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker, create_async_engine
 from sqlalchemy.orm import DeclarativeBase
 from sqlalchemy.pool import StaticPool
@@ -28,8 +30,16 @@ _engine = None
 _sessionmaker: async_sessionmaker[AsyncSession] | None = None
 
 
+def ensure_sqlite_dir(url: str) -> None:
+    """SQLite won't create the folder its file lives in (./data/ on a fresh clone)."""
+    parsed = make_url(url)
+    if parsed.get_backend_name() == "sqlite" and parsed.database not in (None, "", ":memory:"):
+        Path(parsed.database).parent.mkdir(parents=True, exist_ok=True)
+
+
 def _build_engine() -> Any:
     settings = get_settings()
+    ensure_sqlite_dir(settings.database_url)
     kwargs: dict[str, Any] = {"pool_pre_ping": True}
     if settings.database_url.startswith("sqlite"):
         kwargs["connect_args"] = {"check_same_thread": False}

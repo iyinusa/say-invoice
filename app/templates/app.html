@@ -21,7 +21,12 @@
 
   <header class="topbar">
     <span class="brand">Say<b>Invoice</b></span>
-    <span class="biz">{{ business_name }}</span>
+    <span class="topbar-right">
+      <span class="biz">{{ business_name }}</span>
+      <button class="gear" x-show="screen === 'record'" @click="openSettings()" aria-label="Deal rules">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg>
+      </button>
+    </span>
   </header>
 
   <!-- ── 1. Record ─────────────────────────────────────────────── -->
@@ -157,22 +162,89 @@
   <section class="screen sent" x-show="screen === 'sent'">
     <template x-if="invoice">
       <div>
-        <div class="tick" aria-hidden="true">✓</div>
-        <h1>Invoice sent</h1>
+        <div class="tick" :class="{ paid: invoice.status === 'paid' }" aria-hidden="true">✓</div>
+        <h1 x-text="invoice.status === 'paid' ? 'Paid!' : 'Invoice sent'"></h1>
         <p class="big" x-text="money(toCents(invoice.total), invoice.currency)"></p>
+        <p class="status" :class="invoice.status" role="status" aria-live="polite">
+          <span class="dot" aria-hidden="true"></span><span x-text="paidLabel()"></span>
+        </p>
         <p class="muted">
           <span x-text="invoice.number ? `No. ${invoice.number} · ` : ''"></span>
           to <span x-text="invoice.client_email"></span>
         </p>
 
         <div class="actions">
-          <button class="btn primary big" @click="openQr()">Show QR to pay now</button>
-          <button class="btn" @click="copyLink()" :disabled="!invoice.payer_view_url"
-                  x-text="copied ? 'Link copied ✓' : 'Copy pay link'"></button>
-          <button class="btn" x-show="canShare" @click="shareLink()">Share…</button>
+          <template x-if="invoice.status !== 'paid'">
+            <div class="actions">
+              <button class="btn primary big" @click="openQr()">Show QR to pay now</button>
+              <button class="btn" @click="copyLink()" :disabled="!invoice.payer_view_url"
+                      x-text="copied ? 'Link copied ✓' : 'Copy pay link'"></button>
+              <button class="btn" x-show="canShare" @click="shareLink()">Share…</button>
+            </div>
+          </template>
           <button class="link" @click="reset()">New job</button>
         </div>
       </div>
+    </template>
+  </section>
+
+  <!-- ── Deal rules (Deal Policy) ─────────────────────────────── -->
+  <section class="screen settings" x-show="screen === 'settings'">
+    <h1>Your deal rules</h1>
+    <p class="hint">When a client asks for a better price, SayInvoice negotiates inside these
+      rules. Anything outside them comes to you first.</p>
+
+    <template x-if="policy">
+      <form class="card" @submit.prevent="savePolicy()">
+        <label class="rule">
+          <span class="rule-text"><b>Most I'll knock off labour</b></span>
+          <span class="pct"><input type="number" inputmode="decimal" min="0" max="50" step="0.5"
+                 x-model.number="policy.max_discount_pct" required><i>%</i></span>
+        </label>
+        <div class="rule">
+          <span class="rule-text"><b>Materials</b><small>Always charged at full price</small></span>
+          <span class="locked">Never discounted</span>
+        </div>
+        <label class="rule">
+          <span class="rule-text"><b>Never go below</b>
+            <small>of the full price. Kept secret: not shown to clients or the AI.</small></span>
+          <span class="pct"><input type="number" inputmode="decimal" min="50" max="100" step="1"
+                 x-model.number="policy.floor_pct" required><i>%</i></span>
+        </label>
+        <label class="rule">
+          <span class="rule-text"><b>Deposit at least</b><small>taken when a quote is accepted</small></span>
+          <span class="pct"><input type="number" inputmode="decimal" min="0" max="100" step="5"
+                 x-model.number="policy.min_deposit_pct" required><i>%</i></span>
+        </label>
+        <div class="rule stacked">
+          <span class="rule-text"><b>Payment plans</b><small>for clients who can't pay in one go</small></span>
+          <span class="plan">up to
+            <input type="number" inputmode="numeric" min="1" max="12" x-model.number="policy.max_instalments"
+                   aria-label="Most instalments" required>
+            payments within
+            <input type="number" inputmode="numeric" min="7" max="365" x-model.number="policy.max_plan_days"
+                   aria-label="Days to pay in full" required> days</span>
+        </div>
+        <fieldset class="rule toggles">
+          <legend><b>Clients can ask to change</b></legend>
+          <label class="chip"><input type="checkbox" x-model="policy.price_negotiable"> The price</label>
+          <label class="chip"><input type="checkbox" x-model="policy.scope_negotiable"> What's included</label>
+          <label class="chip"><input type="checkbox" x-model="policy.date_negotiable"> The date</label>
+        </fieldset>
+        <label class="rule switch">
+          <span class="rule-text"><b>Ask me before agreeing any deal</b>
+            <small>even ones inside these rules</small></span>
+          <input type="checkbox" :checked="!policy.auto_agree_within_policy"
+                 @change="policy.auto_agree_within_policy = !$event.target.checked">
+        </label>
+
+        <p class="error" role="alert" x-show="error" x-text="error"></p>
+        <div class="actions">
+          <button class="btn primary big" :disabled="busy"
+                  x-text="busy ? 'Saving…' : (saved ? 'Saved ✓' : 'Save rules')"></button>
+          <button type="button" class="link" @click="screen = 'record'; error = ''">Back</button>
+        </div>
+      </form>
     </template>
   </section>
 
@@ -183,10 +255,20 @@
       <div class="qr-inner">
         <p class="qr-biz">{{ business_name }}</p>
         <p class="qr-total" x-text="money(toCents(invoice.total), invoice.currency)"></p>
-        <img :src="`/api/invoices/${invoice.id}/qr.png`" alt="QR code to pay this invoice"
-             width="320" height="320" @error="qrError = true" x-show="!qrError">
-        <p class="error" x-show="qrError">Couldn't load the QR code. Use “Copy pay link” instead.</p>
-        <p class="qr-help">Scan with your phone camera to pay by card or PayPal</p>
+        <template x-if="invoice.status !== 'paid'">
+          <div class="qr-inner">
+            <img :src="`/api/invoices/${invoice.id}/qr.png`" alt="QR code to pay this invoice"
+                 width="320" height="320" @error="qrError = true" x-show="!qrError">
+            <p class="error" x-show="qrError">Couldn't load the QR code. Use “Copy pay link” instead.</p>
+            <p class="qr-help" x-text="invoice.status === 'partially_paid' ? paidLabel() : 'Scan with your phone camera to pay by card or PayPal'"></p>
+          </div>
+        </template>
+        <template x-if="invoice.status === 'paid'">
+          <div class="qr-paid" role="status">
+            <div class="qr-paid-tick" aria-hidden="true">✓</div>
+            <p>Paid. Thank you!</p>
+          </div>
+        </template>
         <button class="btn big" @click="closeQr()">Done</button>
       </div>
     </template>

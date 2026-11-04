@@ -13,18 +13,31 @@ You need [uv](https://docs.astral.sh/uv/) and, for the agents, Node 18+.
 ```bash
 cp .env.example .env        # then fill in the PayPal sandbox + Gemini values
 uv sync
-uv run alembic upgrade head
+uv run alembic upgrade head     # creates ./data/sayinvoice.db
 uv run uvicorn app.main:app --reload
 ```
 
 Open http://localhost:8000 on your phone or laptop. Tap the mic and describe a job, or type it. Check the card, then tap **Send**. Sending needs the PayPal sandbox values below; reading a job only needs the Gemini key.
+
+### Or with Docker
+
+```bash
+cp .env.example .env        # fill it in as above
+docker compose up --build   # then open http://localhost:8000
+```
+
+- **Settings** come from `.env` at run time; the image never contains your keys.
+- **The database** (SQLite by default) lives in the `sayinvoice-data` volume, so invoices and deal rules survive rebuilds. To use Postgres, set `SI_DATABASE_URL` in `.env`. `docker compose down -v` deletes the volume.
+- **PayPal's MCP server** is pre-installed in the image and used automatically.
+- **Migrations** run on every start.
+- **Another port:** `SI_PORT=8080 docker compose up`.
 
 ### PayPal sandbox setup
 
 1. Sign in at [developer.paypal.com](https://developer.paypal.com/dashboard/) and open **Testing Tools → Sandbox Accounts**. You get a **Business** account (the tradesperson) and a **Personal** account (the client who pays).
 2. Go to **Apps & Credentials → Sandbox → Create App**. Copy the Client ID and Secret into `SI_PAYPAL_CLIENT_ID` / `SI_PAYPAL_CLIENT_SECRET`.
 3. Put the sandbox Business account email in `SI_PAYPAL_MERCHANT_EMAIL`.
-4. Once the app has a public URL, add a webhook on the app for `{SI_PUBLIC_BASE_URL}/api/webhooks/paypal` with the `INVOICING.INVOICE.*` events. Copy its ID into `SI_PAYPAL_WEBHOOK_ID`.
+4. Once the app has a public HTTPS URL, run `uv run python -m scripts.register_webhook https://<your-app>`. Copy the ID it prints into `SI_PAYPAL_WEBHOOK_ID`. Until then, invoices still turn "Paid" within a minute: the app re-checks open invoices with PayPal every 60 seconds, and the Sent screen checks every 8 seconds while it waits.
 
 ### Spikes (end-to-end checks against the real sandbox)
 

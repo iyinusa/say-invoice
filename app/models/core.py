@@ -41,6 +41,31 @@ class Workspace(IdMixin, Base):
     language: Mapped[str] = mapped_column(String(16), default="en")
 
 
+class DealPolicy(IdMixin, Base):
+    """The tradesperson's rules for negotiating. PolicyGuard enforces them in code.
+
+    Percentages are of the quote's list price. Materials are never discounted;
+    that is a fixed rule in PolicyGuard, not a setting.
+    """
+
+    __tablename__ = "deal_policy"
+
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id"), unique=True)
+    # Most the agent may take off labour, e.g. 10 = 10% off the labour lines.
+    max_discount_pct: Mapped[Decimal] = mapped_column(Money, default=Decimal(10))
+    # Lowest acceptable total, as % of the list price for the same work. Never shown
+    # to the client or to the AI: it only learns that an offer was refused.
+    floor_pct: Mapped[Decimal] = mapped_column(Money, default=Decimal(90))
+    min_deposit_pct: Mapped[Decimal] = mapped_column(Money, default=Decimal(25))
+    max_instalments: Mapped[int] = mapped_column(Integer, default=3)
+    max_plan_days: Mapped[int] = mapped_column(Integer, default=60)
+    price_negotiable: Mapped[bool] = mapped_column(Boolean, default=True)
+    scope_negotiable: Mapped[bool] = mapped_column(Boolean, default=True)
+    date_negotiable: Mapped[bool] = mapped_column(Boolean, default=True)
+    # False = "ask me before agreeing any deal", even one inside the rules.
+    auto_agree_within_policy: Mapped[bool] = mapped_column(Boolean, default=True)
+
+
 class Client(IdMixin, Base):
     __tablename__ = "client"
     __table_args__ = (UniqueConstraint("workspace_id", "email"),)

@@ -9,13 +9,14 @@ from sqlalchemy.ext.asyncio import async_engine_from_config
 
 from alembic import context
 from app import models  # noqa: F401 - register tables
-from app.db import Base
+from app.db import Base, ensure_sqlite_dir
 from app.settings import get_settings
 
 config = context.config
 if config.config_file_name is not None:
     fileConfig(config.config_file_name)
 
+ensure_sqlite_dir(get_settings().database_url)
 config.set_main_option("sqlalchemy.url", get_settings().database_url)
 
 target_metadata = Base.metadata

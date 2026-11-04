@@ -11,7 +11,6 @@ from __future__ import annotations
 
 import asyncio
 import os
-import shlex
 import sys
 import uuid
 
@@ -39,8 +38,8 @@ async def main(question: str) -> None:
     toolset = McpToolset(
         connection_params=StdioConnectionParams(
             server_params=StdioServerParameters(
-                command=shlex.split(s.paypal_mcp_command)[0],
-                args=[*shlex.split(s.paypal_mcp_command)[1:], "--tools=invoices.list,invoices.get"],
+                command=s.paypal_mcp_argv()[0],
+                args=[*s.paypal_mcp_argv()[1:], "--tools=invoices.list,invoices.get"],
                 env={
                     "PAYPAL_ACCESS_TOKEN": token,
                     "PAYPAL_ENVIRONMENT": "PRODUCTION" if s.paypal_env == "live" else "SANDBOX",

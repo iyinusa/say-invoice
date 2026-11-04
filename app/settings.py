@@ -1,10 +1,16 @@
 from __future__ import annotations
 
 import os
+import shlex
+import shutil
 from functools import lru_cache
+from pathlib import Path
 
 from pydantic import Field, field_validator
 from pydantic_settings import BaseSettings, SettingsConfigDict
+
+# Where the Docker image pre-installs PayPal's MCP server (see Dockerfile).
+BUNDLED_PAYPAL_MCP = Path("/opt/paypal-mcp/node_modules/@paypal/mcp/dist/index.js")
 
 
 class Settings(BaseSettings):
@@ -25,7 +31,7 @@ class Settings(BaseSettings):
     # production point this at Postgres. Render hands out `postgres://` URLs,
     # which the validator below rewrites for the asyncpg driver.
     database_url: str = Field(
-        default="sqlite+aiosqlite:///./sayinvoice.db",
+        default="sqlite+aiosqlite:///./data/sayinvoice.db",
         description="Async SQLAlchemy URL.",
     )
 
@@ -62,6 +68,9 @@ class Settings(BaseSettings):
     # Gemini takes inline audio up to ~20 MB per request; a spoken job is far smaller.
     max_audio_bytes: int = 10 * 1024 * 1024
 
+    # Seconds between reconcile passes (re-check open invoices with PayPal). 0 turns it off.
+    reconcile_interval_s: float = 60.0
+
     # Until onboarding exists, the first workspace is created from these.
     default_currency: str = "GBP"
     business_name: str = "Dave's Plumbing"
@@ -91,6 +100,20 @@ class Settings(BaseSettings):
     @property
     def paypal_configured(self) -> bool:
         return bool(self.paypal_client_id and self.paypal_client_secret)
+
+    def paypal_mcp_argv(self) -> list[str]:
+        """The command that starts PayPal's MCP server.
+
+        The configured command wins if its program exists. Otherwise (e.g. a
+        local `.env` saying `npx ...` passed to the Docker image, which has
+        node but no npx) use the copy bundled in the image.
+        """
+        argv = shlex.split(self.paypal_mcp_command)
+        if argv and shutil.which(argv[0]):
+            return argv
+        if BUNDLED_PAYPAL_MCP.exists() and shutil.which("node"):
+            return ["node", str(BUNDLED_PAYPAL_MCP)]
+        return argv or ["npx", "-y", "@paypal/mcp@1.8.1"]
 
     @property
     def gemini_configured(self) -> bool:

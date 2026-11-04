@@ -74,4 +74,5 @@ class InvoiceOut(BaseModel):
     items: list[InvoiceItemOut]
     created_at: datetime
     sent_at: datetime | None
+    paid_at: datetime | None
     last_error: str

@@ -20,7 +20,8 @@ def configure_logging(env: str) -> None:
     if is_prod:
         renderer = structlog.processors.JSONRenderer()
     else:
-        renderer = structlog.dev.ConsoleRenderer(colors=True)
+        # No ANSI codes when piped (docker logs, Render): only colour a real terminal.
+        renderer = structlog.dev.ConsoleRenderer(colors=sys.stdout.isatty())
 
     structlog.configure(
         processors=[*shared_processors, renderer],

@@ -8,6 +8,7 @@ os.environ["SI_PAYPAL_CLIENT_ID"] = "test-client"
 os.environ["SI_PAYPAL_CLIENT_SECRET"] = "test-secret"
 os.environ["SI_PAYPAL_WEBHOOK_ID"] = "WH-TEST"
 os.environ["SI_GOOGLE_API_KEY"] = ""
+os.environ["SI_RECONCILE_INTERVAL_S"] = "0"  # no background PayPal polling in tests
 
 
 from collections.abc import Iterator  # noqa: E402

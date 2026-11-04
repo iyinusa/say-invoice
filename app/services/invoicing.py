@@ -282,5 +282,6 @@ def to_out(inv: Invoice) -> InvoiceOut:
         ],
         created_at=inv.created_at,
         sent_at=inv.sent_at,
+        paid_at=inv.paid_at,
         last_error=inv.last_error,
     )

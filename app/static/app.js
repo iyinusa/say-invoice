@@ -3,6 +3,8 @@
 
 const PAY_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_RECORD_SECONDS = 90;
+const CHECK_EVERY_MS = 8000; // backup for slow webhooks while the Sent screen waits
+const SETTLED = ["paid", "cancelled", "refunded"];
 
 function newKey() {
   if (window.crypto?.randomUUID) return crypto.randomUUID();
@@ -53,6 +55,64 @@ window.sayInvoice = () => ({
   copied: false,
   wakeLock: null,
   canShare: typeof navigator.share === "function",
+  checkTimer: null,
+
+  // deal rules
+  policy: null,
+  saved: false,
+
+  init() {
+    this.listen();
+  },
+
+  // ── live updates ──────────────────────────────────────────────────────
+  listen() {
+    if (!window.EventSource) return;
+    // EventSource reconnects on its own after a dropped signal.
+    const source = new EventSource("/api/events");
+    source.addEventListener("invoice", (e) => this.onInvoice(JSON.parse(e.data)));
+  },
+
+  onInvoice(update) {
+    if (!this.invoice || update.id !== this.invoice.id) return;
+    const wasPaid = this.invoice.status === "paid";
+    Object.assign(this.invoice, {
+      status: update.status,
+      amount_paid: update.amount_paid,
+      paid_at: update.paid_at,
+    });
+    if (SETTLED.includes(update.status)) this.stopChecking();
+    if (update.status === "paid" && !wasPaid) navigator.vibrate?.([80, 60, 160]);
+  },
+
+  startChecking() {
+    this.stopChecking();
+    this.checkTimer = setInterval(() => this.checkNow(), CHECK_EVERY_MS);
+  },
+  stopChecking() {
+    clearInterval(this.checkTimer);
+    this.checkTimer = null;
+  },
+  async checkNow() {
+    if (!this.invoice) return;
+    try {
+      const resp = await fetch(`/api/invoices/${this.invoice.id}/refresh`, { method: "POST" });
+      if (resp.ok) this.onInvoice(await resp.json());
+    } catch {
+      /* offline for a moment; the next tick or the live stream will catch up */
+    }
+  },
+
+  paidLabel() {
+    const inv = this.invoice;
+    if (!inv) return "";
+    if (inv.status === "paid") return "Paid";
+    if (inv.status === "partially_paid") {
+      return `${this.money(this.toCents(inv.amount_paid), inv.currency)} of ${this.money(this.toCents(inv.total), inv.currency)} paid`;
+    }
+    if (inv.status === "cancelled") return "Cancelled";
+    return "Waiting for payment…";
+  },
 
   // ── recording ─────────────────────────────────────────────────────────
   async toggleRecording(target) {
@@ -321,6 +381,7 @@ window.sayInvoice = () => ({
       }
       this.invoice = body;
       this.screen = "sent";
+      this.startChecking();
     } catch {
       // Same key on retry: the server never sends the same invoice twice.
       this.error = "No connection. Tap Send again when you have signal; it won't send twice.";
@@ -366,8 +427,46 @@ window.sayInvoice = () => ({
     }
   },
 
+  // ── deal rules ────────────────────────────────────────────────────────
+  async openSettings() {
+    this.error = "";
+    this.saved = false;
+    this.screen = "settings";
+    try {
+      const resp = await fetch("/api/policy");
+      if (!resp.ok) throw new Error();
+      this.policy = await resp.json();
+      for (const k of ["max_discount_pct", "floor_pct", "min_deposit_pct"]) this.policy[k] = Number(this.policy[k]);
+    } catch {
+      this.error = "Couldn't load your rules. Check your signal and try again.";
+    }
+  },
+  async savePolicy() {
+    this.busy = true;
+    this.error = "";
+    try {
+      const resp = await fetch("/api/policy", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(this.policy),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.error = errorText(body, "Couldn't save. Check the numbers.");
+        return;
+      }
+      this.saved = true;
+      setTimeout(() => (this.saved = false), 2500);
+    } catch {
+      this.error = "No connection. Try again.";
+    } finally {
+      this.busy = false;
+    }
+  },
+
   reset() {
     this.stopRecording();
+    this.stopChecking();
     Object.assign(this, {
       screen: "record", error: "", busy: false, typed: "", typing: false, answer: "",
       card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [] },

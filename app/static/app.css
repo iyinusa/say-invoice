@@ -61,7 +61,10 @@ body {
 }
 .brand { color: var(--ink); font-size: 18px; letter-spacing: -0.01em; }
 .brand b { color: var(--brand); }
-.biz { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; max-width: 55%; }
+.topbar-right { display: flex; align-items: center; gap: 4px; min-width: 0; max-width: 60%; }
+.gear { flex: none; width: 44px; height: 44px; border: 0; background: none; color: var(--muted); cursor: pointer; display: grid; place-items: center; }
+.gear svg { width: 24px; height: 24px; fill: currentColor; }
+.biz { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 .screen { padding-top: 8px; }
 .center { display: grid; place-items: center; min-height: 60dvh; text-align: center; }
@@ -191,6 +194,25 @@ textarea { resize: vertical; }
 
 .actions { display: grid; gap: 10px; margin-top: 18px; }
 
+/* ── deal rules ─────────────────────────────────────────── */
+.rule {
+  display: flex; justify-content: space-between; align-items: center; gap: 12px;
+  padding: 14px 0; border-bottom: 1px solid var(--line);
+}
+.rule:last-of-type { border-bottom: 0; }
+.rule-text { display: grid; gap: 2px; }
+.rule-text small { color: var(--muted); font-size: 14px; }
+.pct { display: flex; align-items: center; gap: 4px; flex: none; }
+.pct input { width: 84px; text-align: right; }
+.pct i { font-style: normal; font-weight: 700; color: var(--muted); }
+.locked { flex: none; font-size: 14px; font-weight: 700; color: var(--brand); background: var(--brand-soft); padding: 6px 10px; border-radius: 999px; }
+.plan { display: flex; align-items: center; gap: 8px; color: var(--muted); white-space: nowrap; }
+.plan input { width: 64px; text-align: right; }
+.rule.stacked { flex-direction: column; align-items: stretch; gap: 10px; }
+.toggles { display: grid; gap: 4px; border: 0; margin: 0; padding: 14px 0; justify-items: start; }
+.toggles legend { padding: 0; margin-bottom: 4px; }
+.switch input { width: 28px; height: 28px; min-height: 0; accent-color: var(--brand); flex: none; }
+
 /* ── sent ───────────────────────────────────────────────── */
 .sent { text-align: center; }
 .tick {
@@ -198,6 +220,19 @@ textarea { resize: vertical; }
   display: grid; place-items: center; font-size: 46px; font-weight: 700;
   background: var(--brand-soft); color: var(--brand);
 }
+
+.tick.paid { background: var(--brand); color: var(--brand-ink); transition: background 0.3s ease; }
+.status {
+  display: inline-flex; align-items: center; gap: 8px; margin: 4px 0 8px;
+  padding: 8px 14px; border-radius: 999px; font-weight: 600;
+  background: var(--flag-soft); color: var(--flag);
+}
+.status .dot { width: 10px; height: 10px; border-radius: 50%; background: currentColor; animation: blink 1.6s ease-in-out infinite; }
+.status.paid { background: var(--brand); color: var(--brand-ink); font-size: 19px; }
+.status.paid .dot, .status.cancelled .dot { animation: none; }
+.status.cancelled { background: var(--line); color: var(--muted); }
+@keyframes blink { 50% { opacity: 0.3; } }
+@media (prefers-reduced-motion: reduce) { .status .dot { animation: none; } }
 
 /* ── doorstep QR: always light, maximum contrast for the client's camera ── */
 .qr {
@@ -210,5 +245,11 @@ textarea { resize: vertical; }
 .qr img { width: min(80vw, 320px); height: auto; image-rendering: pixelated; }
 .qr-help { margin: 0; color: #444; }
 .qr .btn { background: #111; color: #fff; border-color: #111; }
+.qr-paid { display: grid; gap: 8px; justify-items: center; padding: 24px 0; }
+.qr-paid p { margin: 0; font-size: 26px; font-weight: 700; color: #0b6b46; }
+.qr-paid-tick {
+  width: 200px; height: 200px; border-radius: 50%; display: grid; place-items: center;
+  background: #0b6b46; color: #fff; font-size: 110px; font-weight: 800;
+}
 
 .noscript { padding: 24px; text-align: center; }

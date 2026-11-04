@@ -138,6 +138,13 @@ class PayPalClient:
             )
         return resp
 
+    async def request_json(
+        self, method: str, path: str, *, json_body: Any = None
+    ) -> dict[str, Any]:
+        """Any other REST call (webhook admin in scripts). Empty bodies come back as {}."""
+        resp = await self._request(method, path, json_body=json_body)
+        return _json_or_none(resp) or {}
+
     async def access_token(self) -> str:
         """A live bearer token, for handing to PayPal's MCP server / Agent Toolkit."""
         return await self._access_token()

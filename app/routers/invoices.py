@@ -2,20 +2,24 @@
 
 from __future__ import annotations
 
+from collections.abc import AsyncIterator
 from datetime import UTC, datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Response
 from fastapi.responses import JSONResponse
+from fastapi.sse import EventSourceResponse, ServerSentEvent
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from app.db import get_session
+from app.db import get_session, get_sessionmaker
 from app.models import Workspace
 from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.schemas.invoice import InvoiceIn, InvoiceOut
-from app.services import invoicing
+from app.services import invoicing, payments
+from app.services.live import broker
 from app.settings import Settings, get_settings
 
 router = APIRouter(prefix="/api/invoices", tags=["invoices"])
+events_router = APIRouter(prefix="/api", tags=["live"])
 
 
 async def current_workspace(
@@ -57,6 +61,24 @@ async def read_invoice(
     return invoicing.to_out(inv)
 
 
+@router.post("/{invoice_id}/refresh", response_model=InvoiceOut)
+async def refresh_invoice(
+    invoice_id: str,
+    session: AsyncSession = Depends(get_session),
+    ws: Workspace = Depends(current_workspace),
+    paypal: PayPalClient = Depends(get_paypal),
+) -> InvoiceOut:
+    """Ask PayPal now. The Sent screen calls this while it waits, in case webhooks are slow."""
+    inv = await invoicing.get_invoice(session, ws, invoice_id)
+    if inv is None:
+        raise HTTPException(404, "invoice not found")
+    try:
+        await payments.refresh(session, paypal, inv)
+    except PayPalError as exc:
+        raise HTTPException(502, exc.human()) from exc
+    return invoicing.to_out(inv)
+
+
 @router.get("/{invoice_id}/qr.png", response_class=Response)
 async def invoice_qr(
     invoice_id: str,
@@ -74,3 +96,23 @@ async def invoice_qr(
     except PayPalError as exc:
         raise HTTPException(502, exc.human()) from exc
     return Response(png, media_type="image/png", headers={"Cache-Control": "private, max-age=3600"})
+
+
+async def _workspace_id(settings: Settings = Depends(get_settings)) -> str:
+    # Its own short session: a request-scoped one would hold a pooled database
+    # connection open for as long as the phone keeps the stream open.
+    async with get_sessionmaker()() as session:
+        return (await invoicing.default_workspace(session, settings)).id
+
+
+@events_router.get("/events", response_class=EventSourceResponse)
+async def live_events(workspace_id: str = Depends(_workspace_id)) -> AsyncIterator[ServerSentEvent]:
+    """Server-Sent Events: "invoice" whenever one changes (paid, part-paid, cancelled).
+
+    FastAPI adds a keepalive comment every 15 s, so proxies keep the stream open.
+    """
+    with broker.subscribe(workspace_id) as queue:
+        yield ServerSentEvent(event="hello", data={"workspace": workspace_id}, retry=3000)
+        while True:
+            event = await queue.get()
+            yield ServerSentEvent(event=event["type"], data=event)

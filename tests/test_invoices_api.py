@@ -21,6 +21,7 @@ class FakePayPal:
         self.fail: dict[str, list[Exception]] = {}
         self.numbers = 0
         self.created: dict[str, str] = {}  # request id -> invoice id, like PayPal's idempotency
+        self.remote: dict[str, dict[str, Any]] = {}  # what get_invoice returns, by PayPal id
 
     def _maybe_fail(self, name: str) -> None:
         if self.fail.get(name):
@@ -50,6 +51,11 @@ class FakePayPal:
         self.calls.append(("send", {"invoice_id": invoice_id, "request_id": request_id}))
         self._maybe_fail("send")
         return f"https://www.sandbox.paypal.com/invoice/p/#{invoice_id}"
+
+    async def get_invoice(self, invoice_id: str) -> dict[str, Any]:
+        self.calls.append(("get", invoice_id))
+        self._maybe_fail("get")
+        return self.remote.get(invoice_id, {"id": invoice_id, "status": "SENT"})
 
     async def generate_qr_code(self, invoice_id: str, *, size: int = 500) -> bytes:
         self.calls.append(("qr", invoice_id))
