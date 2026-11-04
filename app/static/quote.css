@@ -1,0 +1,56 @@
+/* The client's quote page: the tradesperson's shop window. Builds on app.css tokens. */
+
+.doc { padding-top: 12px; }
+.doc-head { display: flex; justify-content: space-between; align-items: flex-start; gap: 12px; margin: 12px 0 16px; }
+.doc-head h1 { margin: 2px 0 0; font-size: 26px; }
+.doc-kicker { margin: 0; font-size: 13px; font-weight: 700; letter-spacing: 0.06em; text-transform: uppercase; color: var(--muted); }
+
+.pill {
+  flex: none; margin-top: 4px; padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700;
+  background: var(--surface); border: 1px solid var(--line); color: var(--ink-2); white-space: nowrap;
+}
+.pill.ok { background: var(--brand); border-color: var(--brand); color: var(--brand-ink); }
+.pill.warn { background: var(--flag-soft); border-color: var(--flag-line); color: var(--flag); }
+.pill.off { color: var(--muted); }
+
+.doc-card { padding: 20px 16px; }
+.doc-meta {
+  display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 12px;
+  padding-bottom: 16px; margin-bottom: 4px; border-bottom: 1px solid var(--line);
+}
+.doc-meta div { display: grid; gap: 2px; }
+.doc-meta span { font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase; color: var(--muted); }
+.doc-meta b { font-weight: 600; }
+
+.lines { width: 100%; border-collapse: collapse; margin-top: 8px; }
+.lines th {
+  text-align: left; font-size: 12px; font-weight: 700; letter-spacing: 0.05em; text-transform: uppercase;
+  color: var(--muted); padding: 10px 0 6px; border-bottom: 1px solid var(--line);
+}
+.lines td { padding: 12px 0; border-bottom: 1px solid var(--line); vertical-align: top; }
+.lines td b { font-weight: 600; }
+.lines td small { display: block; color: var(--muted); font-size: 14px; margin-top: 2px; }
+.lines .r { text-align: right; white-space: nowrap; padding-left: 12px; font-variant-numeric: tabular-nums; font-weight: 600; }
+.tag {
+  display: inline-block; margin-left: 6px; padding: 1px 8px; border-radius: 999px; vertical-align: 2px;
+  font-size: 11px; font-weight: 700; color: var(--muted); background: var(--surface-2); border: 1px solid var(--line);
+}
+.doc-card .summary { border-top: 0; margin-top: 8px; }
+.doc-card .summary .grand { margin: 0 0 6px; padding-top: 4px; border-top: 0; }
+
+.action { margin-top: 16px; padding: 20px 16px; }
+.action h2 { margin: 0 0 14px; font-size: 20px; letter-spacing: -0.01em; }
+.action .btn { margin-top: 4px; text-decoration: none; }
+.fine { margin: 10px 0 0; font-size: 13px; color: var(--muted); text-align: center; }
+.qr-mini { margin-top: 14px; text-align: center; }
+.qr-mini summary { cursor: pointer; color: var(--brand); font-weight: 600; min-height: 44px; display: inline-flex; align-items: center; }
+.qr-mini img { display: block; margin: 8px auto 0; background: #fff; padding: 8px; border-radius: 12px; image-rendering: pixelated; }
+
+.booked { text-align: center; }
+.booked-tick {
+  width: 72px; height: 72px; margin: 4px auto 10px; border-radius: 50%; display: grid; place-items: center;
+  background: var(--brand); color: var(--brand-ink); font-size: 38px; font-weight: 800;
+}
+.booked p { margin: 4px 0; }
+
+.doc-foot { margin: 28px 0 8px; text-align: center; font-size: 13px; color: var(--muted); }

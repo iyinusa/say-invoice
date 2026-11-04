@@ -17,7 +17,7 @@ from sqlalchemy import select
 from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 
 from app.logging_config import get_logger
-from app.models import Event, Invoice
+from app.models import Event, Invoice, Quote
 from app.models.base import utcnow
 from app.paypal.client import PayPalError
 from app.services.live import broker
@@ -114,6 +114,20 @@ async def apply_remote(session: AsyncSession, inv: Invoice, remote: dict[str, An
         session.add_all(events)
         await session.commit()
         broker.publish(inv.workspace_id, invoice_event(inv))
+        if inv.quote_id:
+            # A deposit moving (paid, part-paid) changes how its quote reads: "Booked!".
+            quote = await session.get(Quote, inv.quote_id)
+            if quote is not None:
+                broker.publish(
+                    inv.workspace_id,
+                    {
+                        "type": "quote",
+                        "id": quote.id,
+                        "number": quote.number,
+                        "status": quote.status,
+                        "deposit_status": inv.status,
+                    },
+                )
         log.info("invoice_synced", invoice_id=inv.id, status=inv.status, paid=str(inv.amount_paid))
     return changed
 

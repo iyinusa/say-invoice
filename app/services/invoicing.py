@@ -134,6 +134,8 @@ async def create_and_send(
     data: InvoiceIn,
     *,
     today: date,
+    kind: str = "standard",
+    quote_id: str | None = None,
 ) -> Invoice:
     inv = await session.scalar(
         select(Invoice).where(
@@ -144,11 +146,20 @@ async def create_and_send(
         return inv  # already sent: this is a retry of a tap that worked
     if inv is None:
         client = await _client_for(session, ws, data.client_name, str(data.client_email))
-        inv = Invoice(workspace_id=ws.id, idempotency_key=data.idempotency_key)
+        inv = Invoice(
+            workspace_id=ws.id, idempotency_key=data.idempotency_key, kind=kind, quote_id=quote_id
+        )
         _fill(inv, data, client, ws, today)
         session.add(inv)
         await session.flush()
-        session.add(Event(workspace_id=ws.id, invoice_id=inv.id, kind="invoice_created"))
+        session.add(
+            Event(
+                workspace_id=ws.id,
+                invoice_id=inv.id,
+                kind="invoice_created",
+                data={"kind": kind, "quote_id": quote_id} if quote_id else {},
+            )
+        )
         await session.commit()
     elif inv.payload_hash != payload_hash(data):
         if inv.paypal_invoice_id:

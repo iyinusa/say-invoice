@@ -11,6 +11,7 @@
     window.SAYINVOICE = {
       currency: {{ currency | tojson }},
       defaultDueDays: {{ default_due_days | tojson }},
+      minDeposit: {{ min_deposit | tojson }},
     };
   </script>
   <script defer src="/static/app.js?v={{ v }}"></script>
@@ -47,13 +48,16 @@
     <p class="mic-label" aria-live="polite"
        x-text="recording ? `Listening… ${clock(seconds)} · tap to stop` : 'Tap to talk'"></p>
 
-    <div class="typed" x-show="typing">
-      <label for="job-text" class="sr-only">Describe the job</label>
-      <textarea id="job-text" x-ref="jobText" rows="4" x-model="typed" maxlength="2000"
+    <div class="typed panel" x-show="typing">
+      <label for="job-text" class="field-label">Describe the job</label>
+      <textarea id="job-text" class="control" x-ref="jobText" rows="4" x-model="typed" maxlength="2000"
                 placeholder="2 hours at £60 for Mr Kennedy's boiler, plus a £25 valve, kennedy@example.com"></textarea>
-      <button class="btn primary" :disabled="!typed.trim()" @click="parseTyped()">Read it</button>
+      <div class="typed-actions">
+        <button class="btn ghost" @click="typing = false; typed = ''">Cancel</button>
+        <button class="btn primary" :disabled="!typed.trim()" @click="parseTyped()">Read it</button>
+      </div>
     </div>
-    <button class="link" x-show="!typing" @click="typing = true; $nextTick(() => $refs.jobText.focus())">
+    <button class="btn ghost" x-show="!typing" @click="typing = true; $nextTick(() => $refs.jobText.focus())">
       Or type it instead</button>
 
     <p class="error" role="alert" x-show="error" x-text="error"></p>
@@ -68,84 +72,131 @@
   <!-- ── 3. Preview ────────────────────────────────────────────── -->
   <section class="screen preview" x-show="screen === 'preview'">
     <template x-if="question">
-      <div class="ask" role="status">
-        <p class="ask-q" x-text="question"></p>
+      <div class="callout ask" role="status">
+        <p class="callout-title" x-text="question"></p>
         <div class="ask-row">
-          <input type="text" x-model="answer" placeholder="Type the answer" aria-label="Your answer"
-                 @keydown.enter.prevent="answerTyped()">
-          <button class="icon-btn" :class="{ live: recording }" @click="toggleRecording('answer')"
-                  :aria-label="recording ? 'Stop recording' : 'Say the answer'">
-            <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg>
-          </button>
-          <button class="btn small" :disabled="!answer.trim() || busy" @click="answerTyped()">OK</button>
+          <div class="input-group grow">
+            <input type="text" x-model="answer" placeholder="Your answer" aria-label="Your answer"
+                   @keydown.enter.prevent="answerTyped()">
+            <button class="addon-btn" :class="{ live: recording }" @click="toggleRecording('answer')"
+                    :aria-label="recording ? 'Stop recording' : 'Say the answer'"><svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg></button>
+          </div>
+          <button class="btn primary compact" :disabled="!answer.trim() || busy" @click="answerTyped()"
+                  x-text="busy ? '…' : 'Answer'"></button>
         </div>
-        <p class="ask-busy" x-show="busy">Updating…</p>
       </div>
     </template>
 
-    <ul class="warnings" x-show="warnings.length">
+    <ul class="callout warn" x-show="warnings.length">
       <template x-for="w in warnings"><li x-text="w"></li></template>
     </ul>
 
-    <div class="card">
-      <p class="eyebrow">Invoice for</p>
-      <label class="field" :class="flagClass('client_name')">
-        <span>Name</span>
-        <input type="text" x-model="card.client_name" @input="confirmField('client_name')"
-               autocomplete="off" placeholder="Client name">
-      </label>
-      <label class="field" :class="flagClass('client_email')">
-        <span>Email <em x-show="flagged('client_email')">check this</em></span>
-        <input type="email" x-model.trim="card.client_email" @input="confirmField('client_email')"
-               inputmode="email" autocomplete="off" autocapitalize="off" placeholder="client@example.com">
-      </label>
+    <div class="card invoice">
+      <div class="segmented doc-type" role="radiogroup" aria-label="Send as">
+        <button type="button" role="radio" :aria-checked="mode === 'invoice'" @click="mode = 'invoice'">Invoice</button>
+        <button type="button" role="radio" :aria-checked="mode === 'quote'" @click="mode = 'quote'">Quote</button>
+      </div>
+      <h2 class="section-title" x-text="mode === 'quote' ? 'Quote for' : 'Bill to'"></h2>
+      <div class="field" :class="flagClass('client_name')">
+        <label class="field-label" for="client-name">Client name</label>
+        <input id="client-name" class="control" type="text" x-model="card.client_name"
+               @input="confirmField('client_name')" autocomplete="off" placeholder="e.g. Tom Kennedy">
+      </div>
+      <div class="field" :class="flagClass('client_email')">
+        <label class="field-label" for="client-email">Email <span class="optional" x-show="mode === 'quote'">optional</span></label>
+        <input id="client-email" class="control" type="email" x-model.trim="card.client_email"
+               @input="confirmField('client_email')" inputmode="email" autocomplete="off"
+               autocapitalize="off" spellcheck="false" placeholder="client@example.com">
+        <p class="field-flag" x-show="flagged('client_email')"
+           x-text="card.client_email ? 'Heard from your voice note. Check the spelling.' : 'Needed: PayPal sends the invoice here.'"></p>
+        <p class="field-help" x-show="mode === 'quote' && !flagged('client_email')">No email? You can send the quote link by text.</p>
+      </div>
 
-      <p class="eyebrow">Work</p>
+      <h2 class="section-title">Work</h2>
       <ol class="items">
         <template x-for="(item, n) in card.items" :key="item.key">
           <li class="item">
-            <div class="item-top">
-              <input class="item-name" type="text" x-model="item.name" aria-label="Item"
+            <div class="item-head">
+              <input class="control item-name" type="text" x-model="item.name" placeholder="Description"
+                     :aria-label="`Line ${n + 1} description`"
                      :class="flagClass(`items.${n}.name`)" @input="confirmField(`items.${n}.name`)">
-              <button class="remove" @click="removeItem(n)" aria-label="Remove line">×</button>
+              <button class="icon-btn subtle" @click="removeItem(n)" :aria-label="`Remove line ${n + 1}`">
+                <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M9 3h6a1 1 0 0 1 1 1v1h4a1 1 0 1 1 0 2h-1l-1 13a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 7H4a1 1 0 0 1 0-2h4V4a1 1 0 0 1 1-1Zm-1.99 4 .99 13h8l.99-13H7.01ZM10 9a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1Zm4 0a1 1 0 0 1 1 1v7a1 1 0 1 1-2 0v-7a1 1 0 0 1 1-1Z"/></svg>
+              </button>
             </div>
-            <div class="item-nums">
-              <input type="text" inputmode="decimal" x-model="item.quantity" aria-label="Quantity"
-                     :class="flagClass(`items.${n}.quantity`)" @input="confirmField(`items.${n}.quantity`)">
-              <span class="unit" x-text="item.unit === 'hours' ? 'h ×' : '×'"></span>
-              <input type="text" inputmode="decimal" x-model="item.unit_price" aria-label="Price each"
-                     :class="flagClass(`items.${n}.unit_price`)" @input="confirmField(`items.${n}.unit_price`)"
-                     :placeholder="'Price'">
-              <span class="line-total" x-text="money(lineCents(item))"></span>
+            <div class="item-grid">
+              <div class="field mini" :class="flagClass(`items.${n}.quantity`)">
+                <label class="field-label" :for="`qty-${item.key}`" x-text="item.unit === 'hours' ? 'Hours' : 'Qty'"></label>
+                <input :id="`qty-${item.key}`" class="control num" type="text" inputmode="decimal"
+                       x-model="item.quantity" @input="confirmField(`items.${n}.quantity`)">
+              </div>
+              <div class="field mini" :class="flagClass(`items.${n}.unit_price`)">
+                <label class="field-label" :for="`price-${item.key}`" x-text="item.unit === 'hours' ? 'Rate' : 'Price'"></label>
+                <div class="input-group">
+                  <span class="addon" x-text="currencySymbol()"></span>
+                  <input :id="`price-${item.key}`" class="num" type="text" inputmode="decimal"
+                         x-model="item.unit_price" placeholder="0.00" @input="confirmField(`items.${n}.unit_price`)">
+                </div>
+              </div>
+              <div class="field mini amount">
+                <span class="field-label">Amount</span>
+                <output class="amount-value" x-text="money(lineCents(item))"></output>
+              </div>
             </div>
-            <label class="chip"><input type="checkbox" x-model="item.is_material"> Materials</label>
+            <div class="segmented" role="radiogroup" :aria-label="`Line ${n + 1} type`">
+              <button type="button" role="radio" :aria-checked="!item.is_material" @click="item.is_material = false">Labour</button>
+              <button type="button" role="radio" :aria-checked="item.is_material" @click="item.is_material = true">Materials</button>
+            </div>
           </li>
         </template>
       </ol>
-      <button class="link" @click="addItem()">+ Add a line</button>
+      <button class="btn dashed" @click="addItem()">+ Add a line</button>
 
-      <div class="row-2">
-        <label class="field" :class="flagClass('due_date')">
-          <span>Due</span>
-          <input type="date" x-model="card.due_date" @input="confirmField('due_date')">
-          <small x-show="!card.due_date" x-text="dueHint()"></small>
-        </label>
-        <label class="field">
-          <span>Currency</span>
-          <input type="text" x-model="card.currency" maxlength="3" class="upper" autocapitalize="characters">
-        </label>
+      <h2 class="section-title">Terms</h2>
+      <div class="terms-grid halves" x-show="mode === 'quote'">
+        <div class="field" :class="flagClass('deposit_pct')">
+          <label class="field-label" for="deposit">Deposit to book</label>
+          <div class="input-group">
+            <input id="deposit" class="num" type="text" inputmode="decimal" x-model="card.deposit_pct"
+                   :placeholder="String(window.SAYINVOICE.minDeposit)" @input="confirmField('deposit_pct')">
+            <span class="addon">%</span>
+          </div>
+          <p class="field-help" x-text="depositHint()"></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="job-date">Job date <span class="optional">optional</span></label>
+          <input id="job-date" class="control" type="date" x-model="card.job_date">
+        </div>
       </div>
-
-      <details class="note">
-        <summary>Note to client</summary>
-        <textarea rows="2" x-model="card.notes" maxlength="4000" placeholder="Thanks for your business!"></textarea>
-      </details>
-
-      <div class="total">
-        <span>Total</span>
-        <strong x-text="money(totalCents())"></strong>
+      <div class="terms-grid" :class="{ halves: mode === 'quote' }">
+        <div class="field" :class="flagClass('due_date')" x-show="mode === 'invoice'">
+          <label class="field-label" for="due-date">Due date</label>
+          <input id="due-date" class="control" type="date" x-model="card.due_date" @input="confirmField('due_date')">
+          <p class="field-help" x-show="!card.due_date" x-text="dueHint()"></p>
+        </div>
+        <div class="field">
+          <label class="field-label" for="currency">Currency</label>
+          <select id="currency" class="control" x-model="card.currency">
+            <template x-for="c in currencyChoices()" :key="c">
+              <option :value="c" x-text="c" :selected="c === card.currency"></option>
+            </template>
+          </select>
+        </div>
       </div>
-      <p class="said" x-show="transcript">You said: “<span x-text="transcript"></span>”</p>
+      <div class="field" x-show="noteOpen || card.notes">
+        <label class="field-label" for="note">Note to client <span class="optional">optional</span></label>
+        <textarea id="note" class="control" rows="2" x-model="card.notes" maxlength="4000"
+                  placeholder="Thanks for having me round!"></textarea>
+      </div>
+      <button class="btn ghost small" x-show="!noteOpen && !card.notes" @click="noteOpen = true">+ Add a note to the client</button>
+
+      <dl class="summary">
+        <div x-show="materialsCents() > 0"><dt>Labour</dt><dd x-text="money(labourCents())"></dd></div>
+        <div x-show="materialsCents() > 0"><dt>Materials</dt><dd x-text="money(materialsCents())"></dd></div>
+        <div class="grand"><dt>Total</dt><dd x-text="money(totalCents())"></dd></div>
+        <div x-show="mode === 'quote' && depositCents() > 0"><dt x-text="`Deposit (${depositPct()}%)`"></dt><dd x-text="money(depositCents())"></dd></div>
+      </dl>
+      <p class="said" x-show="transcript"><span>You said</span>“<span x-text="transcript"></span>”</p>
     </div>
 
     <p class="error" role="alert" x-show="error" x-text="error"></p>
@@ -153,8 +204,8 @@
 
     <div class="actions">
       <button class="btn primary big" :disabled="!canSend() || busy" @click="send()"
-              x-text="busy ? 'Sending…' : `Send ${money(totalCents())} invoice`"></button>
-      <button class="link" @click="reset()" :disabled="busy">Start again</button>
+              x-text="busy ? (mode === 'quote' ? 'Creating…' : 'Sending…') : (mode === 'quote' ? `Create ${money(totalCents())} quote` : `Send ${money(totalCents())} invoice`)"></button>
+      <button class="btn ghost" @click="reset()" :disabled="busy">Start again</button>
     </div>
   </section>
 
@@ -175,14 +226,48 @@
 
         <div class="actions">
           <template x-if="invoice.status !== 'paid'">
-            <div class="actions">
+            <div class="actions flush">
               <button class="btn primary big" @click="openQr()">Show QR to pay now</button>
               <button class="btn" @click="copyLink()" :disabled="!invoice.payer_view_url"
                       x-text="copied ? 'Link copied ✓' : 'Copy pay link'"></button>
               <button class="btn" x-show="canShare" @click="shareLink()">Share…</button>
             </div>
           </template>
-          <button class="link" @click="reset()">New job</button>
+          <button class="btn ghost" @click="reset()">New job</button>
+        </div>
+      </div>
+    </template>
+  </section>
+
+  <!-- ── 4b. Quote ready ───────────────────────────────────────── -->
+  <section class="screen sent" x-show="screen === 'quoteSent'">
+    <template x-if="quote">
+      <div>
+        <div class="tick" :class="{ paid: quoteBooked() }" aria-hidden="true">✓</div>
+        <h1 x-text="quoteHeadline()"></h1>
+        <p class="big" x-text="money(toCents(quote.total), quote.currency)"></p>
+        <p class="muted">
+          <span x-text="`${quote.number} · `"></span>
+          <span x-text="quote.client_name || quote.client_email"></span>
+          <span x-show="toCents(quote.deposit_amount) > 0" x-text="` · ${money(toCents(quote.deposit_amount), quote.currency)} deposit`"></span>
+        </p>
+
+        <div class="panel share" x-show="!quoteBooked()">
+          <label class="field-label" for="quote-link">Quote link</label>
+          <div class="input-group">
+            <input id="quote-link" type="text" readonly :value="quote.public_url" @focus="$event.target.select()">
+            <button class="addon-btn copy" @click="copyQuoteLink()" :aria-label="copied ? 'Copied' : 'Copy link'"
+                    x-text="copied ? '✓' : 'Copy'"></button>
+          </div>
+          <div class="share-grid">
+            <a class="btn" :href="smsLink()">Text it</a>
+            <a class="btn" :href="mailLink()">Email it</a>
+          </div>
+          <button class="btn primary" x-show="canShare" @click="shareQuote()">Share…</button>
+          <a class="btn ghost" :href="quote.public_url" target="_blank" rel="noopener">See what the client sees</a>
+        </div>
+        <div class="actions">
+          <button class="btn ghost" @click="reset()">New job</button>
         </div>
       </div>
     </template>
@@ -195,54 +280,68 @@
       rules. Anything outside them comes to you first.</p>
 
     <template x-if="policy">
-      <form class="card" @submit.prevent="savePolicy()">
-        <label class="rule">
-          <span class="rule-text"><b>Most I'll knock off labour</b></span>
-          <span class="pct"><input type="number" inputmode="decimal" min="0" max="50" step="0.5"
-                 x-model.number="policy.max_discount_pct" required><i>%</i></span>
-        </label>
-        <div class="rule">
-          <span class="rule-text"><b>Materials</b><small>Always charged at full price</small></span>
-          <span class="locked">Never discounted</span>
+      <form @submit.prevent="savePolicy()">
+        <h2 class="group-title">Discounts</h2>
+        <div class="group">
+          <label class="setting">
+            <span class="setting-text"><b>Most off labour</b><small>The agent can offer up to this much.</small></span>
+            <span class="input-group fixed"><input class="num" type="number" inputmode="decimal" min="0" max="50" step="0.5"
+                  x-model.number="policy.max_discount_pct" required><span class="addon">%</span></span>
+          </label>
+          <label class="setting">
+            <span class="setting-text"><b>Never go below</b><small>Of the full price. Kept secret from clients and the AI.</small></span>
+            <span class="input-group fixed"><input class="num" type="number" inputmode="decimal" min="50" max="100" step="1"
+                  x-model.number="policy.floor_pct" required><span class="addon">%</span></span>
+          </label>
+          <div class="setting">
+            <span class="setting-text"><b>Materials</b><small>Always charged at full price.</small></span>
+            <span class="badge">Never discounted</span>
+          </div>
         </div>
-        <label class="rule">
-          <span class="rule-text"><b>Never go below</b>
-            <small>of the full price. Kept secret: not shown to clients or the AI.</small></span>
-          <span class="pct"><input type="number" inputmode="decimal" min="50" max="100" step="1"
-                 x-model.number="policy.floor_pct" required><i>%</i></span>
-        </label>
-        <label class="rule">
-          <span class="rule-text"><b>Deposit at least</b><small>taken when a quote is accepted</small></span>
-          <span class="pct"><input type="number" inputmode="decimal" min="0" max="100" step="5"
-                 x-model.number="policy.min_deposit_pct" required><i>%</i></span>
-        </label>
-        <div class="rule stacked">
-          <span class="rule-text"><b>Payment plans</b><small>for clients who can't pay in one go</small></span>
-          <span class="plan">up to
-            <input type="number" inputmode="numeric" min="1" max="12" x-model.number="policy.max_instalments"
-                   aria-label="Most instalments" required>
-            payments within
-            <input type="number" inputmode="numeric" min="7" max="365" x-model.number="policy.max_plan_days"
-                   aria-label="Days to pay in full" required> days</span>
+
+        <h2 class="group-title">Deposit and payment plans</h2>
+        <div class="group">
+          <label class="setting">
+            <span class="setting-text"><b>Minimum deposit</b><small>Taken when a quote is accepted.</small></span>
+            <span class="input-group fixed"><input class="num" type="number" inputmode="decimal" min="0" max="100" step="5"
+                  x-model.number="policy.min_deposit_pct" required><span class="addon">%</span></span>
+          </label>
+          <label class="setting">
+            <span class="setting-text"><b>Payments in a plan</b><small>For clients who can't pay in one go.</small></span>
+            <span class="input-group fixed"><input class="num" type="number" inputmode="numeric" min="1" max="12"
+                  x-model.number="policy.max_instalments" required><span class="addon">max</span></span>
+          </label>
+          <label class="setting">
+            <span class="setting-text"><b>Paid in full within</b><small>The last payment's latest date.</small></span>
+            <span class="input-group fixed"><input class="num" type="number" inputmode="numeric" min="7" max="365"
+                  x-model.number="policy.max_plan_days" required><span class="addon">days</span></span>
+          </label>
         </div>
-        <fieldset class="rule toggles">
-          <legend><b>Clients can ask to change</b></legend>
-          <label class="chip"><input type="checkbox" x-model="policy.price_negotiable"> The price</label>
-          <label class="chip"><input type="checkbox" x-model="policy.scope_negotiable"> What's included</label>
-          <label class="chip"><input type="checkbox" x-model="policy.date_negotiable"> The date</label>
-        </fieldset>
-        <label class="rule switch">
-          <span class="rule-text"><b>Ask me before agreeing any deal</b>
-            <small>even ones inside these rules</small></span>
-          <input type="checkbox" :checked="!policy.auto_agree_within_policy"
-                 @change="policy.auto_agree_within_policy = !$event.target.checked">
-        </label>
+
+        <h2 class="group-title">Clients can ask to change</h2>
+        <div class="group">
+          <label class="setting"><span class="setting-text"><b>The price</b></span>
+            <input type="checkbox" role="switch" class="switch" x-model="policy.price_negotiable"></label>
+          <label class="setting"><span class="setting-text"><b>What's included</b><small>e.g. "I've bought the tap myself".</small></span>
+            <input type="checkbox" role="switch" class="switch" x-model="policy.scope_negotiable"></label>
+          <label class="setting"><span class="setting-text"><b>The date</b></span>
+            <input type="checkbox" role="switch" class="switch" x-model="policy.date_negotiable"></label>
+        </div>
+
+        <h2 class="group-title">Approval</h2>
+        <div class="group">
+          <label class="setting">
+            <span class="setting-text"><b>Ask me before agreeing any deal</b><small>Even ones inside these rules.</small></span>
+            <input type="checkbox" role="switch" class="switch" :checked="!policy.auto_agree_within_policy"
+                   @change="policy.auto_agree_within_policy = !$event.target.checked">
+          </label>
+        </div>
 
         <p class="error" role="alert" x-show="error" x-text="error"></p>
         <div class="actions">
           <button class="btn primary big" :disabled="busy"
                   x-text="busy ? 'Saving…' : (saved ? 'Saved ✓' : 'Save rules')"></button>
-          <button type="button" class="link" @click="screen = 'record'; error = ''">Back</button>
+          <button type="button" class="btn ghost" @click="screen = 'record'; error = ''">Back</button>
         </div>
       </form>
     </template>

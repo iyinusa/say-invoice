@@ -5,6 +5,8 @@ const PAY_EMAIL = /^[^\s@]+@[^\s@]+\.[^\s@]+$/;
 const MAX_RECORD_SECONDS = 90;
 const CHECK_EVERY_MS = 8000; // backup for slow webhooks while the Sent screen waits
 const SETTLED = ["paid", "cancelled", "refunded"];
+// Currencies PayPal Invoicing accepts (mirrors app/agents/parser_rules.py).
+const PAYPAL_CURRENCIES = "AUD BRL CAD CHF CNY CZK DKK EUR GBP HKD HUF ILS JPY MXN MYR NOK NZD PHP PLN RUB SEK SGD THB TWD USD".split(" ");
 
 function newKey() {
   if (window.crypto?.randomUUID) return crypto.randomUUID();
@@ -38,7 +40,7 @@ window.sayInvoice = () => ({
   typed: "",
 
   // preview
-  card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [] },
+  card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [], deposit_pct: "", job_date: "" },
   flags: [],
   missing: [],
   question: "",
@@ -47,6 +49,9 @@ window.sayInvoice = () => ({
   transcript: "",
   draft: null,
   key: "",
+  noteOpen: false,
+  mode: "invoice",
+  quote: null,
 
   // sent
   invoice: null,
@@ -71,6 +76,7 @@ window.sayInvoice = () => ({
     // EventSource reconnects on its own after a dropped signal.
     const source = new EventSource("/api/events");
     source.addEventListener("invoice", (e) => this.onInvoice(JSON.parse(e.data)));
+    source.addEventListener("quote", (e) => this.onQuote(JSON.parse(e.data)));
   },
 
   onInvoice(update) {
@@ -175,7 +181,8 @@ window.sayInvoice = () => ({
     const form = new FormData();
     if (blob) form.append("audio", blob, blob.type.includes("mp4") ? "note.m4a" : "note.webm");
     if (text) form.append("text", text);
-    form.append("mode", "invoice");
+    // "auto": say "quote" and the card opens as a quote; the switch on the card can change it.
+    form.append("mode", previous ? this.mode : "auto");
     form.append("tz", Intl.DateTimeFormat().resolvedOptions().timeZone || "");
     if (previous) form.append("previous", JSON.stringify(previous));
     let resp;
@@ -230,7 +237,10 @@ window.sayInvoice = () => ({
   },
 
   loadCard(result, { keepKey = false } = {}) {
+    this.mode = result.mode;
     this.card = {
+      deposit_pct: result.deposit_pct != null ? String(Number(result.deposit_pct)) : "",
+      job_date: "",
       client_name: result.client_name,
       client_email: result.client_email,
       currency: result.currency,
@@ -260,7 +270,9 @@ window.sayInvoice = () => ({
   cardToDraft() {
     return {
       ...this.draft,
-      mode: "invoice",
+      mode: this.mode,
+      deposit_pct: num(this.card.deposit_pct) >= 0 ? num(this.card.deposit_pct) : null,
+      deposit_amount: null,
       client_name: this.card.client_name,
       client_email: this.card.client_email,
       currency: this.card.currency,
@@ -319,6 +331,26 @@ window.sayInvoice = () => ({
   totalCents() {
     return this.card.items.reduce((sum, i) => sum + this.lineCents(i), 0);
   },
+  labourCents() {
+    return this.card.items.filter((i) => !i.is_material).reduce((s, i) => s + this.lineCents(i), 0);
+  },
+  materialsCents() {
+    return this.card.items.filter((i) => i.is_material).reduce((s, i) => s + this.lineCents(i), 0);
+  },
+  currencySymbol() {
+    const code = (this.card.currency || window.SAYINVOICE.currency || "GBP").toUpperCase();
+    try {
+      const parts = new Intl.NumberFormat(undefined, { style: "currency", currency: code, currencyDisplay: "narrowSymbol" }).formatToParts(0);
+      return parts.find((p) => p.type === "currency")?.value || code;
+    } catch {
+      return code;
+    }
+  },
+  currencyChoices() {
+    // Keep whatever the parser heard (even one PayPal can't take) so the warning makes sense.
+    const cur = (this.card.currency || "").toUpperCase();
+    return cur && !PAYPAL_CURRENCIES.includes(cur) ? [cur, ...PAYPAL_CURRENCIES] : PAYPAL_CURRENCIES;
+  },
   money(cents, currency) {
     const code = (currency || this.card.currency || window.SAYINVOICE.currency || "GBP").toUpperCase();
     try {
@@ -332,11 +364,32 @@ window.sayInvoice = () => ({
     return days > 0 ? `Empty means due in ${days} days` : "Empty means due on receipt";
   },
 
+  depositPct() {
+    const v = num(this.card.deposit_pct);
+    return Number.isFinite(v) && String(this.card.deposit_pct).trim() !== "" ? v : window.SAYINVOICE.minDeposit;
+  },
+  depositCents() {
+    return Math.round((this.totalCents() * this.depositPct()) / 100);
+  },
+  depositHint() {
+    return String(this.card.deposit_pct).trim() === ""
+      ? `Empty means your minimum (${window.SAYINVOICE.minDeposit}%)`
+      : "Taken by PayPal when the client accepts";
+  },
+
   blocker() {
     if (!this.card.items.length) return "Add at least one line.";
     const bad = this.card.items.find((i) => !i.name.trim() || !(num(i.quantity) > 0) || !(num(i.unit_price) > 0));
     if (bad) return bad.name.trim() ? `Add a price for “${bad.name.trim()}”.` : "Every line needs a name.";
-    if (!PAY_EMAIL.test(this.card.client_email)) return "Add the client's email so PayPal can send it.";
+    if (this.mode === "quote") {
+      const email = this.card.client_email.trim();
+      if (email && !PAY_EMAIL.test(email)) return "That email doesn't look right.";
+      if (!email && !this.card.client_name.trim()) return "Who is the quote for? Add a name or email.";
+      const d = num(this.card.deposit_pct);
+      if (String(this.card.deposit_pct).trim() !== "" && !(d >= 0 && d <= 100)) return "Deposit should be 0 to 100%.";
+    } else if (!PAY_EMAIL.test(this.card.client_email)) {
+      return "Add the client's email so PayPal can send it.";
+    }
     if (!/^[A-Za-z]{3}$/.test(this.card.currency)) return "Currency should be a 3-letter code, like GBP.";
     return "";
   },
@@ -346,6 +399,7 @@ window.sayInvoice = () => ({
 
   // ── send ──────────────────────────────────────────────────────────────
   async send() {
+    if (this.mode === "quote") return this.createQuote();
     if (!this.canSend() || this.busy) return;
     this.busy = true;
     this.error = "";
@@ -387,6 +441,92 @@ window.sayInvoice = () => ({
       this.error = "No connection. Tap Send again when you have signal; it won't send twice.";
     } finally {
       this.busy = false;
+    }
+  },
+
+  // ── quotes ────────────────────────────────────────────────────────────
+  async createQuote() {
+    if (!this.canSend() || this.busy) return;
+    this.busy = true;
+    this.error = "";
+    const dec = (v) => (Math.round(num(v) * 100) / 100).toFixed(2);
+    const payload = {
+      idempotency_key: this.key,
+      client_name: this.card.client_name.trim(),
+      client_email: this.card.client_email.trim() || null,
+      currency: this.card.currency.trim().toUpperCase(),
+      items: this.card.items.map((i) => ({
+        name: i.name.trim(), description: (i.description || "").trim(),
+        quantity: dec(i.quantity), unit_price: dec(i.unit_price), unit: i.unit, is_material: i.is_material,
+      })),
+      deposit_pct: String(this.card.deposit_pct).trim() === "" ? null : dec(this.card.deposit_pct),
+      job_date: this.card.job_date || null,
+      notes: this.card.notes,
+      transcript: this.transcript,
+      draft: this.draft,
+    };
+    try {
+      const resp = await fetch("/api/quotes", {
+        method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload),
+      });
+      const body = await resp.json().catch(() => ({}));
+      if (!resp.ok) {
+        this.error = errorText(body, "Couldn't create the quote. Try again.");
+        return;
+      }
+      this.quote = body;
+      this.screen = "quoteSent";
+    } catch {
+      this.error = "No connection. Tap again when you have signal; it won't make two quotes.";
+    } finally {
+      this.busy = false;
+    }
+  },
+  onQuote(update) {
+    if (!this.quote || update.id !== this.quote.id) return;
+    const wasBooked = this.quoteBooked();
+    this.quote.status = update.status;
+    this.quote.deposit = update.deposit_status ? { ...(this.quote.deposit || {}), status: update.deposit_status } : this.quote.deposit;
+    if (this.quoteBooked() && !wasBooked) navigator.vibrate?.([80, 60, 160]);
+  },
+  quoteBooked() {
+    const q = this.quote;
+    if (!q || q.status !== "accepted") return false;
+    return this.toCents(q.deposit_amount) === 0 || q.deposit?.status === "paid";
+  },
+  quoteHeadline() {
+    const q = this.quote;
+    if (this.quoteBooked()) return "Booked!";
+    if (q?.status === "accepted") return "Accepted, deposit due";
+    return "Quote ready to send";
+  },
+  quoteMessage() {
+    const q = this.quote;
+    const who = q.client_name ? `Hi ${q.client_name.split(" ")[0]}, here` : "Here";
+    return `${who}'s your quote for ${this.money(this.toCents(q.total), q.currency)}. You can accept it and book here: ${q.public_url}`;
+  },
+  smsLink() {
+    return this.quote ? `sms:?&body=${encodeURIComponent(this.quoteMessage())}` : "#";
+  },
+  mailLink() {
+    if (!this.quote) return "#";
+    const q = this.quote;
+    return `mailto:${encodeURIComponent(q.client_email || "")}?subject=${encodeURIComponent(`Your quote ${q.number}`)}&body=${encodeURIComponent(this.quoteMessage())}`;
+  },
+  async copyQuoteLink() {
+    try {
+      await navigator.clipboard.writeText(this.quote.public_url);
+      this.copied = true;
+      setTimeout(() => (this.copied = false), 2500);
+    } catch {
+      window.prompt("Copy the quote link:", this.quote.public_url);
+    }
+  },
+  async shareQuote() {
+    try {
+      await navigator.share({ title: `Quote ${this.quote.number}`, text: this.quoteMessage(), url: this.quote.public_url });
+    } catch {
+      /* closed */
     }
   },
 
@@ -469,8 +609,9 @@ window.sayInvoice = () => ({
     this.stopChecking();
     Object.assign(this, {
       screen: "record", error: "", busy: false, typed: "", typing: false, answer: "",
-      card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [] },
-      flags: [], missing: [], question: "", warnings: [], transcript: "", draft: null, key: "",
+      card: { client_name: "", client_email: "", currency: "", due_date: "", notes: "", items: [], deposit_pct: "", job_date: "" },
+      flags: [], missing: [], question: "", warnings: [], transcript: "", draft: null, key: "", noteOpen: false,
+      mode: "invoice", quote: null,
       invoice: null, qrOpen: false, qrError: false, copied: false,
     });
   },

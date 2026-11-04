@@ -16,6 +16,7 @@ from sqlalchemy.ext.asyncio import AsyncSession
 
 from app.db import get_session
 from app.services.invoicing import default_workspace
+from app.services.policy import get_policy
 from app.settings import Settings, get_settings
 
 APP_DIR = Path(__file__).resolve().parent.parent
@@ -44,6 +45,7 @@ async def app_page(
     settings: Settings = Depends(get_settings),
 ) -> HTMLResponse:
     ws = await default_workspace(session, settings)
+    policy = await get_policy(session, ws)
     return templates.TemplateResponse(
         request,
         "app.html",
@@ -51,6 +53,7 @@ async def app_page(
             "business_name": ws.business_name,
             "currency": ws.currency,
             "default_due_days": ws.default_due_days,
+            "min_deposit": float(policy.min_deposit_pct),
             "v": ASSET_VERSION,
         },
     )

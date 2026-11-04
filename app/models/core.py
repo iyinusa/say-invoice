@@ -77,12 +77,62 @@ class Client(IdMixin, Base):
     language: Mapped[str] = mapped_column(String(16), default="en")
 
 
+class Quote(IdMixin, Base):
+    """A priced offer the client opens at /q/{public_token}. It lives in our app:
+    PayPal Invoicing has no quote endpoint (Spike 4c), so PayPal takes over at the deposit."""
+
+    __tablename__ = "quote"
+    __table_args__ = (UniqueConstraint("workspace_id", "idempotency_key"),)
+
+    workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id"), index=True)
+    client_id: Mapped[str | None] = mapped_column(ForeignKey("client.id"), index=True)
+    idempotency_key: Mapped[str] = mapped_column(String(64))
+    # The client's only credential: 128 random bits, URL-safe.
+    public_token: Mapped[str] = mapped_column(String(40), unique=True)
+    number: Mapped[str] = mapped_column(String(20))
+    # sent | negotiating | awaiting_owner | accepted | declined | expired
+    status: Mapped[str] = mapped_column(String(20), default="sent", index=True)
+    version: Mapped[int] = mapped_column(Integer, default=1)
+    client_name: Mapped[str] = mapped_column(String(120), default="")
+    client_email: Mapped[str] = mapped_column(String(254), default="")
+    currency: Mapped[str] = mapped_column(String(3))
+    total: Mapped[Decimal] = mapped_column(Money)
+    deposit_pct: Mapped[Decimal] = mapped_column(Money)
+    job_date: Mapped[date | None] = mapped_column(Date)
+    valid_until: Mapped[date] = mapped_column(Date)
+    note: Mapped[str] = mapped_column(Text, default="")
+    transcript: Mapped[str] = mapped_column(Text, default="")
+    raw_ai_json: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    # Snapshot of exactly what was accepted, so later edits can't rewrite history.
+    agreed_terms: Mapped[dict[str, Any] | None] = mapped_column(JSON)
+    accepted_at: Mapped[datetime | None] = mapped_column(DateTime(timezone=True))
+
+    lines: Mapped[list[QuoteLine]] = relationship(
+        order_by="QuoteLine.position", cascade="all, delete-orphan", lazy="selectin"
+    )
+
+
+class QuoteLine(IdMixin, Base):
+    __tablename__ = "quote_line"
+
+    quote_id: Mapped[str] = mapped_column(ForeignKey("quote.id"), index=True)
+    position: Mapped[int] = mapped_column(Integer, default=0)
+    name: Mapped[str] = mapped_column(String(200))
+    description: Mapped[str] = mapped_column(String(1000), default="")
+    quantity: Mapped[Decimal] = mapped_column(Money)
+    unit_amount: Mapped[Decimal] = mapped_column(Money)
+    unit: Mapped[str] = mapped_column(String(10), default="items")
+    is_material: Mapped[bool] = mapped_column(Boolean, default=False)
+
+
 class Invoice(IdMixin, Base):
     __tablename__ = "invoice"
     __table_args__ = (UniqueConstraint("workspace_id", "idempotency_key"),)
 
     workspace_id: Mapped[str] = mapped_column(ForeignKey("workspace.id"), index=True)
     client_id: Mapped[str] = mapped_column(ForeignKey("client.id"), index=True)
+    # Set for a quote's deposit invoice (and, later, its final invoice).
+    quote_id: Mapped[str | None] = mapped_column(ForeignKey("quote.id"), index=True)
     # The UI's key for one tap of "Send": a retry with the same key never sends twice.
     idempotency_key: Mapped[str] = mapped_column(String(64))
     payload_hash: Mapped[str] = mapped_column(String(64))

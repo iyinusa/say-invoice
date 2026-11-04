@@ -44,3 +44,15 @@ def plain(value: Decimal) -> Decimal:
 
 def percent_of(amount: Decimal, pct: Decimal | int | str, currency: str) -> Decimal:
     return to_money(amount * Decimal(str(pct)) / Decimal(100), currency)
+
+
+_SYMBOL = {"GBP": "£", "USD": "$", "EUR": "€", "AUD": "A$", "CAD": "C$", "NZD": "NZ$", "JPY": "¥"}
+
+
+def display(value: Decimal, currency: str) -> str:
+    """For server-rendered pages: £1,234.50. The phone app formats with Intl instead."""
+    amount = to_money(value, currency)
+    places = 0 if currency.upper() in _ZERO_DECIMAL else 2
+    symbol = _SYMBOL.get(currency.upper())
+    number = f"{amount:,.{places}f}"
+    return f"{symbol}{number}" if symbol else f"{number} {currency.upper()}"

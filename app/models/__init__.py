@@ -3,6 +3,25 @@
 from __future__ import annotations
 
 from app.db import Base
-from app.models.core import Client, DealPolicy, Event, Invoice, LineItem, Workspace
+from app.models.core import (
+    Client,
+    DealPolicy,
+    Event,
+    Invoice,
+    LineItem,
+    Quote,
+    QuoteLine,
+    Workspace,
+)
 
-__all__ = ["Base", "Client", "DealPolicy", "Event", "Invoice", "LineItem", "Workspace"]
+__all__ = [
+    "Base",
+    "Client",
+    "DealPolicy",
+    "Event",
+    "Invoice",
+    "LineItem",
+    "Quote",
+    "QuoteLine",
+    "Workspace",
+]
