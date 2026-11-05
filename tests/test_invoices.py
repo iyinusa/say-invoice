@@ -86,3 +86,34 @@ def test_rejects_empty_or_non_positive(overrides: dict[str, object]) -> None:
 def test_round_quantities_reach_paypal_without_exponents() -> None:
     body = build_invoice_body(_draft(items=[Item("Cupcakes", Decimal("30.00"), Decimal("2.5"))]))
     assert body["items"][0]["quantity"] == "30"
+
+
+def test_invoice_date_is_today_unless_it_is_already_overdue() -> None:
+    from datetime import timedelta
+
+    from app.models import Invoice, Workspace
+    from app.services.clock import real_today
+    from app.services.invoicing import invoice_date_for
+
+    ws = Workspace(business_name="Dave's", default_due_days=14)
+    today = real_today()
+    assert invoice_date_for(Invoice(due_date=today + timedelta(days=7)), ws) == today
+    assert invoice_date_for(Invoice(due_date=None), ws) == today
+    late = Invoice(due_date=today - timedelta(days=12))
+    assert invoice_date_for(late, ws) == today - timedelta(days=26)  # issued on 14-day terms
+
+
+def test_the_usual_note_goes_on_invoices_without_their_own() -> None:
+    from app.models import Client, Invoice, Workspace
+    from app.services.invoicing import note_for
+
+    ws = Workspace(business_name="Dave's", invoice_note="Thanks for choosing Dave's!")
+    plain = Invoice(kind="final", note="", public_token="t1", client=Client(language="en"))
+    assert note_for(plain, ws).startswith("Thanks for choosing Dave's!")
+    own = Invoice(
+        kind="final", note="Sorry about the mud!", public_token="t2", client=Client(language="en")
+    )
+    assert note_for(own, ws).startswith("Sorry about the mud!")
+    assert "Thanks for choosing" not in note_for(own, ws)
+    deposit = Invoice(kind="deposit", note="", public_token="t3", client=Client(language="en"))
+    assert note_for(deposit, ws) == "Thanks for choosing Dave's!"  # no plan link on a deposit

@@ -10,6 +10,13 @@ os.environ["SI_PAYPAL_WEBHOOK_ID"] = "WH-TEST"
 os.environ["SI_GOOGLE_API_KEY"] = ""
 os.environ["SI_RECONCILE_INTERVAL_S"] = "0"  # no background PayPal polling in tests
 
+# Never read the developer's .env: a local SI_TTS_ENGINE=kokoro (or anything else)
+# must not change what the tests see.
+from app import settings as _settings  # noqa: E402
+
+_settings.Settings.model_config["env_file"] = None
+_settings.get_settings.cache_clear()
+
 
 from collections.abc import Iterator  # noqa: E402
 
@@ -31,6 +38,9 @@ def client() -> Iterator[TestClient]:
     async def dispose() -> None:
         await get_engine().dispose()
 
+    from app.security.ratelimit import limiter
+
+    limiter.reset()  # limits are per process; each test starts with a clean slate
     reset_engine_for_tests()
     with TestClient(fastapi_app) as test_client:
         test_client.portal.call(create_tables)  # type: ignore[union-attr]

@@ -38,11 +38,17 @@ class Workspace(IdMixin, Base):
     owner_email: Mapped[str] = mapped_column(String(254), default="")
     currency: Mapped[str] = mapped_column(String(3), default="GBP")
     default_due_days: Mapped[int] = mapped_column(Integer, default=7)
+    # What they do ("Plumber"): shapes the examples and the invoice preview in setup.
+    trade: Mapped[str] = mapped_column(String(40), default="")
+    # The default "Note to recipient" on every PayPal invoice, unless the job says its own.
+    invoice_note: Mapped[str] = mapped_column(String(1000), default="")
     language: Mapped[str] = mapped_column(String(16), default="en")
     # False (the default): the Chase Agent drafts reminders and the owner approves each one.
     auto_chase: Mapped[bool] = mapped_column(Boolean, default=False)
     # Demo clock: the app behaves as if this many days have passed. Never touches PayPal's dates.
     clock_offset_days: Mapped[int] = mapped_column(Integer, default=0)
+    # False until the owner has been through the 30-second setup.
+    onboarded: Mapped[bool] = mapped_column(Boolean, default=False)
 
 
 class DealPolicy(IdMixin, Base):

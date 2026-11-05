@@ -20,6 +20,7 @@
     <div>
       <p class="doc-kicker">{{ T.invoice_kicker.format(number=inv.number) }}</p>
       <h1>{{ business_name }}</h1>
+      {% if trade %}<p class="doc-trade">{{ trade }}</p>{% endif %}
     </div>
     <span class="pill" :class="pillClass()" x-text="pillText()"></span>
   </header>

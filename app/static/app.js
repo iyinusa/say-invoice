@@ -29,6 +29,46 @@ function writeStore(key, value) {
   }
 }
 
+// ── first-run setup ───────────────────────────────────────────────────────
+// A sample job per trade: it fills the live invoice preview and the "Try saying" examples.
+const TRADES = [
+  { key: "plumber", label: "Plumber", said: "Fixed Mr Kennedy's boiler", labour: "Boiler repair", qty: 2, unit: "hours", rate: 60,
+    part: "Pressure valve", partSaid: "a valve", parts: 25, quoteSaid: "Quote for Mrs Patel, replace the kitchen tap", quoteLabour: 90, quoteParts: 40 },
+  { key: "electrician", label: "Electrician", said: "Fitted four new sockets for Mr Kennedy", labour: "Socket installation", qty: 3, unit: "hours", rate: 55,
+    part: "Sockets and cable", partSaid: "sockets and cable", parts: 48, quoteSaid: "Quote for Mrs Patel, rewire the garage", quoteLabour: 380, quoteParts: 120 },
+  { key: "builder", label: "Builder", said: "Rebuilt Mr Kennedy's garden wall", labour: "Garden wall repair", qty: 6, unit: "hours", rate: 40,
+    part: "Bricks and mortar", partSaid: "bricks and mortar", parts: 85, quoteSaid: "Quote for Mrs Patel, a new patio", quoteLabour: 900, quoteParts: 650 },
+  { key: "cleaner", label: "Cleaner", said: "End of tenancy clean for Mr Kennedy", labour: "End of tenancy clean", qty: 4, unit: "hours", rate: 22,
+    part: "Cleaning supplies", partSaid: "supplies", parts: 15, quoteSaid: "Quote for Mrs Patel, a deep clean of the office", quoteLabour: 120, quoteParts: 20 },
+  { key: "gardener", label: "Gardener", said: "Cut back Mr Kennedy's hedges", labour: "Hedge trimming", qty: 3, unit: "hours", rate: 30,
+    part: "Green waste removal", partSaid: "taking the waste away", parts: 25, quoteSaid: "Quote for Mrs Patel, lay a new lawn", quoteLabour: 300, quoteParts: 180 },
+  { key: "decorator", label: "Decorator", said: "Painted Mr Kennedy's living room", labour: "Painting and prep", qty: 8, unit: "hours", rate: 28,
+    part: "Paint and materials", partSaid: "paint", parts: 60, quoteSaid: "Quote for Mrs Patel, paint the hallway and stairs", quoteLabour: 450, quoteParts: 90 },
+  { key: "mechanic", label: "Mechanic", said: "Serviced Mr Kennedy's van", labour: "Full service", qty: 2, unit: "hours", rate: 50,
+    part: "Oil and filters", partSaid: "oil and filters", parts: 45, quoteSaid: "Quote for Mrs Patel, new brake pads and discs", quoteLabour: 120, quoteParts: 140 },
+  { key: "other", label: "Something else", said: "Did a job for Mr Kennedy", labour: "Labour", qty: 2, unit: "hours", rate: 50,
+    part: "Materials", partSaid: "materials", parts: 30, quoteSaid: "Quote for Mrs Patel", quoteLabour: 200, quoteParts: 60 },
+];
+const TOP_CURRENCIES = ["GBP", "USD", "EUR", "CAD", "AUD"];
+const ONB_STEPS = ["You", "Invoices", "Deals", "Getting paid"];
+// Rough size of one pound in each currency, so a ¥ or Ft sample job doesn't look like pocket change.
+const CURRENCY_SCALE = { BRL: 6, CNY: 9, CZK: 29, DKK: 9, HKD: 10, HUF: 480, ILS: 5, JPY: 190, MXN: 24,
+                         MYR: 6, NOK: 14, PHP: 70, PLN: 5, RUB: 110, SEK: 14, THB: 44, TWD: 40 };
+const DEFAULT_POLICY = { max_discount_pct: 10, floor_pct: 90, min_deposit_pct: 25, max_instalments: 3, max_plan_days: 60,
+                         price_negotiable: true, scope_negotiable: true, date_negotiable: true, auto_agree_within_policy: true };
+const ONB_DRAFT = "si.onb";
+const ONB_FIELDS = ["step", "reached", "business_name", "owner_name", "trade", "trade_other", "currency", "default_due_days",
+                    "invoice_note", "note_seeded", "max_discount_pct", "floor_pct", "min_deposit_pct", "ask_first",
+                    "max_instalments", "auto_chase"];
+// The saved trade ("Plumber") -> its sample job; anything else is the generic one.
+const tradeKey = (label) => (label ? TRADES.find((t) => t.label === label)?.key || "other" : "");
+const shortDate = (d) => d.toLocaleDateString(undefined, { day: "numeric", month: "short" });
+const daysFromNow = (n) => {
+  const d = new Date();
+  d.setDate(d.getDate() + n);
+  return d;
+};
+
 // Buzz the phone, but only once the user has touched the page (browsers block it before).
 function buzz(pattern) {
   if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.(pattern);
@@ -45,11 +85,32 @@ function num(value) {
   return Number.isFinite(n) ? n : NaN;
 }
 
+// 50 ms of 16-bit mono silence as a WAV blob URL: primes the audio element (see primeSpeech).
+function silentWav() {
+  const rate = 8000, samples = rate / 20, buf = new ArrayBuffer(44 + samples * 2), v = new DataView(buf);
+  const text = (at, s) => [...s].forEach((c, i) => v.setUint8(at + i, c.charCodeAt(0)));
+  text(0, "RIFF"); v.setUint32(4, 36 + samples * 2, true); text(8, "WAVEfmt ");
+  v.setUint32(16, 16, true); v.setUint16(20, 1, true); v.setUint16(22, 1, true);
+  v.setUint32(24, rate, true); v.setUint32(28, rate * 2, true); v.setUint16(32, 2, true); v.setUint16(34, 16, true);
+  text(36, "data"); v.setUint32(40, samples * 2, true);
+  return URL.createObjectURL(new Blob([buf], { type: "audio/wav" }));
+}
+
 function errorText(body, fallback) {
   const d = body?.detail;
   if (typeof d === "string") return d;
   if (Array.isArray(d) && d[0]?.msg) return d[0].msg.replace(/^Value error, /, "");
   return fallback;
+}
+
+// Signed out (the 30-day cookie ran out, or the passcode changed): back to the sign-in page.
+{
+  const ownFetch = window.fetch.bind(window);
+  window.fetch = async (...args) => {
+    const resp = await ownFetch(...args);
+    if (resp.status === 401 && new URL(resp.url || location.href).origin === location.origin) location.assign("/login");
+    return resp;
+  };
 }
 
 window.sayInvoice = () => ({
@@ -101,6 +162,8 @@ window.sayInvoice = () => ({
 
   // money view
   home: null,
+  offline: !navigator.onLine,
+  loadFailed: { home: false, detail: false },
   tab: "owed",
   detail: null,
   detailRef: null,
@@ -123,6 +186,17 @@ window.sayInvoice = () => ({
   canListen: !!(window.SpeechRecognition || window.webkitSpeechRecognition),
   canSpeak: "speechSynthesis" in window || window.SAYINVOICE.ttsEngine === "kokoro",
 
+  // onboarding + business settings
+  TRADES, TOP_CURRENCIES, ONB_STEPS,
+  onb: { step: 0, reached: 1, dir: "fwd", business_name: "", owner_name: "", trade: tradeKey(window.SAYINVOICE.trade), trade_other: "",
+         currency: window.SAYINVOICE.currency || "GBP", default_due_days: 7, invoice_note: "", note_seeded: false,
+         max_discount_pct: 10, floor_pct: 90, min_deposit_pct: 25, ask_first: false, max_instalments: 3, auto_chase: false,
+         paypal_account: "", paypal_env: "sandbox", currencies: PAYPAL_CURRENCIES, _policy: null },
+  invoiceNote: window.SAYINVOICE.invoiceNote || "",
+  ownerName: window.SAYINVOICE.ownerName || "",
+  biz: null,
+  businessName: window.SAYINVOICE.businessName,
+
   // demo clock
   clockInfo: null,
   clockBusy: false,
@@ -144,8 +218,23 @@ window.sayInvoice = () => ({
   counter: { discount: "", deposit: "", note: "" },
   deciding: false,
   approvalError: "",
+  later: [], // message ids put off with "Later" this session; they stay pending
+  get waiting() {
+    return this.approvals.filter((a) => !this.later.includes(a.message_id));
+  },
   get approval() {
-    return this.approvals[0] || null;
+    return this.waiting[0] || null;
+  },
+  answerLater() {
+    if (!this.approval) return;
+    this.later = [...this.later, this.approval.message_id];
+    Object.assign(this, { countering: false, replying: false, approvalError: "" });
+  },
+  // Opening a job that's waiting for you brings its request back.
+  unsnooze(kind, id) {
+    const key = kind === "quote" ? "quote_id" : "invoice_id";
+    const mine = this.approvals.filter((a) => a[key] === id).map((a) => a.message_id);
+    if (mine.length) this.later = this.later.filter((m) => !mine.includes(m));
   },
 
   init() {
@@ -155,6 +244,269 @@ window.sayInvoice = () => ({
     this.loadHome();
     this.loadReminders();
     this.loadClock();
+    if (!window.SAYINVOICE.onboarded) this.startOnboarding();
+    window.addEventListener("online", () => {
+      this.offline = false;
+      this.loadHome();
+      this.loadJobs();
+    });
+    window.addEventListener("offline", () => (this.offline = true));
+    // Installable app + opens with no signal. Needs https (localhost counts).
+    if ("serviceWorker" in navigator && window.isSecureContext) {
+      navigator.serviceWorker.register("/sw.js").catch(() => {});
+    }
+  },
+
+  // ── onboarding ────────────────────────────────────────────────────────
+  async startOnboarding() {
+    this.screen = "onboarding";
+    try {
+      const [ws, pol] = await Promise.all([fetch("/api/workspace"), fetch("/api/policy")]);
+      const w = ws.ok ? await ws.json() : {};
+      const p = pol.ok ? await pol.json() : {};
+      const trade = TRADES.find((t) => t.key !== "other" && t.label === w.trade);
+      Object.assign(this.onb, {
+        trade: trade ? trade.key : w.trade ? "other" : "", trade_other: trade ? "" : w.trade || "",
+        currency: w.currency || "GBP", default_due_days: w.default_due_days ?? 7, invoice_note: w.invoice_note || "",
+        auto_chase: !!w.auto_chase, paypal_account: w.paypal_account || "", paypal_env: w.paypal_env || "sandbox",
+        currencies: w.currencies || PAYPAL_CURRENCIES,
+        max_discount_pct: Number(p.max_discount_pct ?? 10), floor_pct: Number(p.floor_pct ?? 90),
+        min_deposit_pct: Number(p.min_deposit_pct ?? 25), max_instalments: Number(p.max_instalments ?? 3),
+        ask_first: p.auto_agree_within_policy === false, _policy: pol.ok ? p : null,
+      });
+    } catch {
+      /* the defaults still work */
+    }
+    // A setup left halfway (the phone locked, the tab closed) picks up where it was.
+    const draft = readStore(ONB_DRAFT, null);
+    if (draft && typeof draft === "object") {
+      for (const k of ONB_FIELDS) if (k in draft && typeof draft[k] === typeof this.onb[k]) this.onb[k] = draft[k];
+    }
+    // Every change is kept as it's made (a slider, a chip), not only on Continue.
+    this.$watch("onb", () => {
+      if (!window.SAYINVOICE.onboarded && this.onb.step <= 4) this.onbSaveDraft();
+    });
+    this.onbFocus();
+  },
+  onbSaveDraft() {
+    writeStore(ONB_DRAFT, Object.fromEntries(ONB_FIELDS.map((k) => [k, this.onb[k]])));
+  },
+  onbGo(step) {
+    step = Math.max(0, Math.min(step, 5));
+    if (step === this.onb.step) return;
+    this.error = "";
+    // Step 5 is only reached by saving; the rail and Back only go to steps already seen.
+    if (step === 5 && !window.SAYINVOICE.onboarded) return;
+    this.onb.dir = step < this.onb.step ? "back" : "fwd";
+    this.onb.step = step;
+    this.onb.reached = Math.max(this.onb.reached, Math.min(step, 4));
+    if (step === 2 && !this.onb.note_seeded) {
+      this.onb.note_seeded = true;
+      if (!this.onb.invoice_note) this.onb.invoice_note = this.onbNoteIdeas()[0];
+    }
+    if (step <= 4) this.onbSaveDraft();
+    this.onbFocus();
+  },
+  onbFocus() {
+    this.$nextTick(() => {
+      window.scrollTo(0, 0);
+      const pane = [...this.$root.querySelectorAll(".onboarding .onb-pane")].find((el) => el.style.display !== "none");
+      const target = this.onb.step === 1 && !this.onb.business_name.trim() ? pane?.querySelector("#onb-biz") : pane?.querySelector("h1");
+      target?.focus({ preventScroll: true });
+    });
+  },
+  onbCanContinue() {
+    if (this.onb.step === 1) return !!this.onb.business_name.trim();
+    return true;
+  },
+  async onbNext() {
+    if (!this.onbCanContinue() || this.busy) return;
+    if (this.onb.step < 4) return this.onbGo(this.onb.step + 1);
+    if (await this.onbSave()) this.onbGo(5);
+  },
+  // Enter moves on, as on any form (but not from a note, a button or a menu).
+  onbEnter(e) {
+    if (["TEXTAREA", "BUTTON", "SELECT"].includes(e.target.tagName)) return;
+    if (this.onb.step >= 1 && this.onb.step <= 4) {
+      e.preventDefault();
+      this.onbNext();
+    }
+  },
+  onbPickTrade(key) {
+    this.onb.trade = this.onb.trade === key ? "" : key;
+    if (key === "other" && this.onb.trade) this.$nextTick(() => this.$root.querySelector(".onb-other")?.focus());
+  },
+  async onbSave() {
+    this.error = "";
+    this.busy = true;
+    try {
+      const o = this.onb;
+      const n = Number(o.max_instalments) || 1;
+      const base = { ...DEFAULT_POLICY, ...(o._policy || {}) };
+      const ws = await fetch("/api/workspace", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          business_name: o.business_name.trim(), owner_name: o.owner_name.trim(), trade: this.onbTradeLabel(),
+          currency: o.currency, default_due_days: o.default_due_days, invoice_note: o.invoice_note.trim(),
+          auto_chase: !!o.auto_chase, onboarded: true,
+        }),
+      });
+      if (!ws.ok) {
+        this.error = errorText(await ws.json().catch(() => ({})), "Couldn't save your business. Check the details.");
+        return false;
+      }
+      const pol = await fetch("/api/policy", {
+        method: "PUT", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          ...base, max_discount_pct: Number(o.max_discount_pct) || 0, floor_pct: Number(o.floor_pct) || 90,
+          min_deposit_pct: Number(o.min_deposit_pct) || 0, max_instalments: n, auto_agree_within_policy: !o.ask_first,
+          // A plan is fortnightly, so leave room for the last payment.
+          max_plan_days: Math.max(Number(base.max_plan_days) || 60, (n - 1) * 14),
+        }),
+      });
+      if (!pol.ok) {
+        this.error = errorText(await pol.json().catch(() => ({})), "Couldn't save your deal rules. Check the numbers.");
+        return false;
+      }
+      const w = await ws.json();
+      this.businessName = w.business_name;
+      this.invoiceNote = w.invoice_note || "";
+      this.ownerName = w.owner_name || "";
+      this.autoChase = !!w.auto_chase;
+      Object.assign(window.SAYINVOICE, { onboarded: true, currency: w.currency, defaultDueDays: w.default_due_days,
+                                        minDeposit: Number(o.min_deposit_pct) || 0, businessName: w.business_name,
+                                        invoiceNote: this.invoiceNote });
+      writeStore(ONB_DRAFT, null);
+      return true;
+    } catch {
+      this.error = "No connection. Try again.";
+      return false;
+    } finally {
+      this.busy = false;
+    }
+  },
+
+  // The live preview: a sample job for their trade, in their currency, on their terms.
+  onbTrade() {
+    return TRADES.find((t) => t.key === this.onb.trade) || TRADES[0];
+  },
+  onbTradeLabel() {
+    if (this.onb.trade === "other") return this.onb.trade_other.trim();
+    return TRADES.find((t) => t.key === this.onb.trade)?.label || "";
+  },
+  onbFirstName() {
+    return this.onb.owner_name.trim().split(/\s+/)[0] || "";
+  },
+  onbInitials() {
+    const words = (this.onb.business_name.trim() || "Your business").split(/\s+/).filter((w) => /\p{L}|\d/u.test(w));
+    return words.slice(0, 2).map((w) => [...w.replace(/^[^\p{L}\d]+/u, "")][0] || "").join("").toUpperCase() || "SI";
+  },
+  onbSym(code) {
+    return this.currencySymbol(code || this.onb.currency);
+  },
+  onbMoney(cents) {
+    return this.money(cents, this.onb.currency);
+  },
+  // Whole pounds -> cents in their currency, rounded to a price someone would really charge.
+  onbAmount(units) {
+    const scale = CURRENCY_SCALE[this.onb.currency] || 1;
+    let v = units * scale;
+    if (scale !== 1) {
+      const step = 10 ** Math.max(0, Math.floor(Math.log10(v)) - 1);
+      v = Math.round(v / step) * step;
+    }
+    return Math.round(v * 100);
+  },
+  onbHero() {
+    const t = TRADES[0];
+    const rate = this.onbAmount(t.rate), parts = this.onbAmount(t.parts), sym = this.onbSym();
+    return { said: `“Fixed Mr Kennedy's boiler, ${t.qty} hours at ${sym}${rate / 100}, plus ${sym}${parts / 100} for a valve”`,
+             labour: rate * t.qty, parts, total: rate * t.qty + parts };
+  },
+  onbJob() {
+    const t = this.onbTrade();
+    const rate = this.onbAmount(t.rate), parts = this.onbAmount(t.parts), labour = rate * t.qty;
+    return {
+      labour, parts, total: labour + parts,
+      lines: [
+        { name: t.labour, detail: `${t.qty} ${t.unit} × ${this.onbMoney(rate)}`, cents: labour },
+        { name: t.part, detail: "Materials", cents: parts },
+      ],
+    };
+  },
+  onbDueLabel() {
+    const d = Number(this.onb.default_due_days) || 0;
+    return d ? `Due ${shortDate(daysFromNow(d))} · ${d} days` : "Due on receipt";
+  },
+  onbNoteIdeas() {
+    const biz = this.onb.business_name.trim();
+    return [biz ? `Thanks for choosing ${biz}!` : "Thanks for your business!", "Thanks for your business!",
+            "It was a pleasure working with you."].filter((s, i, all) => all.indexOf(s) === i);
+  },
+  // What the Deal Agent would say to "any cheaper?", worked out the way PolicyGuard prices it:
+  // the discount comes off labour only, and never takes the total under the secret floor.
+  onbDeal() {
+    const j = this.onbJob(), o = this.onb;
+    const want = Math.max(0, Number(o.max_discount_pct) || 0);
+    const room = j.labour ? ((j.total * (1 - (Number(o.floor_pct) || 0) / 100)) / j.labour) * 100 : 0;
+    const pct = Math.max(0, Math.floor(Math.min(want, room)));
+    const price = j.total - Math.round((j.labour * pct) / 100);
+    const deposit = Math.round((price * (Number(o.min_deposit_pct) || 0)) / 100);
+    const who = this.onbFirstName() || "the owner";
+    if (o.ask_first) {
+      return { pct, price, tone: "ask", reply: `Let me check with ${who} and come straight back to you.`,
+               verdict: pct ? `You get a tap to approve up to ${pct}% off (${this.onbMoney(price)}).` : "You get a tap to decide." };
+    }
+    if (!pct) {
+      return { pct, price, tone: "ask", reply: `That's already my best price, but I'll ask ${who} for you.`,
+               verdict: want ? "Your lowest price leaves no room, so it comes to you." : "No discounts allowed, so it comes to you." };
+    }
+    const dep = deposit ? ` A ${this.onbMoney(deposit)} deposit books your date.` : "";
+    return {
+      pct, price, tone: "ok",
+      reply: `I can take ${pct}% off the labour, so ${this.onbMoney(price)} in all. Materials stay as they are.${dep}`,
+      verdict: pct < want ? `Held at ${pct}% by your lowest price. The client can accept it right away.`
+                          : "Inside your rules, so the client can accept it right away.",
+    };
+  },
+  onbPlan() {
+    const n = Math.max(1, Number(this.onb.max_instalments) || 1), total = this.onbJob().total;
+    const each = Math.floor(total / n);
+    return Array.from({ length: n }, (_, i) => (i === n - 1 ? total - each * (n - 1) : each));
+  },
+  onbLadder() {
+    const due = Number(this.onb.default_due_days) || 0;
+    const at = (late) => shortDate(daysFromNow(due + late));
+    return [
+      { name: "Due", when: at(0), cls: "due" },
+      { name: "Friendly", when: `1 day late · ${at(1)}`, cls: "r1" },
+      { name: "Firm", when: `7 days late · ${at(7)}`, cls: "r2" },
+      { name: "Final", when: `14 days late · ${at(14)}`, cls: "r3" },
+    ];
+  },
+  greeting() {
+    const h = new Date().getHours();
+    const part = h < 5 ? "Working late" : h < 12 ? "Good morning" : h < 18 ? "Good afternoon" : "Good evening";
+    const name = this.ownerName.trim().split(/\s+/)[0];
+    return name ? `${part}, ${name}` : part;
+  },
+  examples() {
+    const t = this.onbTrade(), sym = this.onbSym(), n = (units) => this.onbAmount(units) / 100;
+    const dep = Number(this.onb.min_deposit_pct) || 0;
+    return [
+      { label: "An invoice", text: `${t.said}, ${t.qty} ${t.unit} at ${sym}${n(t.rate)}, plus ${sym}${n(t.parts)} for ${t.partSaid}, email kennedy@example.com` },
+      { label: "A quote", text: `${t.quoteSaid}, ${sym}${n(t.quoteLabour)} labour plus about ${sym}${n(t.quoteParts)} for materials${dep ? `, ${dep}% deposit` : ""}` },
+      { label: "In another language", text: "Factura para Carmen López, limpieza de oficina, cuatro horas a 15 euros, carmen@example.es" },
+    ];
+  },
+  tryExample(text) {
+    this.reset();
+    this.typing = true;
+    this.typed = text;
+    this.$nextTick(() => this.$refs.jobText?.focus());
+  },
+  finishOnboarding() {
+    this.reset();
   },
 
   // ── voice read-back ───────────────────────────────────────────────────
@@ -171,6 +523,13 @@ window.sayInvoice = () => ({
         this._primed = true;
       }
       if (!this.audioEl) this.audioEl = new Audio();
+      // The server voice plays through this element. Playing a moment of silence inside the
+      // tap unlocks it on iOS and starts the audio output now, not on the first read-back.
+      if (window.SAYINVOICE.ttsEngine === "kokoro" && !this._audioPrimed) {
+        this._audioPrimed = true;
+        this.audioEl.src = silentWav();
+        this.audioEl.play().catch(() => { this._audioPrimed = false; });
+      }
     } catch {
       /* no speech on this device */
     }
@@ -198,22 +557,11 @@ window.sayInvoice = () => ({
   },
   async speak(text) {
     this.voiceState = "speaking";
-    // Kokoro on the server when it's turned on; the phone's own voice otherwise.
+    // Kokoro on the server when it's turned on; the phone's own voice otherwise, or for
+    // whatever the server couldn't say.
     if (window.SAYINVOICE.ttsEngine === "kokoro") {
-      try {
-        const q = new URLSearchParams({ text, lang: this.speechLang() });
-        const resp = await fetch(`/api/tts?${q}`);
-        if (resp.ok) {
-          const url = URL.createObjectURL(await resp.blob());
-          const el = this.audioEl || new Audio();
-          el.src = url;
-          await new Promise((resolve) => { el.onended = el.onerror = resolve; el.play().catch(resolve); });
-          URL.revokeObjectURL(url);
-          return;
-        }
-      } catch {
-        /* fall through to the phone's voice */
-      }
+      text = await this.speakOnServer(text);
+      if (!text || this.voiceState !== "speaking") return;
     }
     if (!("speechSynthesis" in window)) return;
     // Whatever the device's voice does (errors, never says "end"), this always finishes.
@@ -232,6 +580,42 @@ window.sayInvoice = () => ({
         resolve();
       }
     });
+  },
+  // Kokoro, a sentence at a time: the next sentence is made while this one plays, so the
+  // first words come after one short sentence, not the whole read-back. Returns what's
+  // left for the phone's voice ("" when it all got said): 503 while the server voice warms
+  // up, 404 when it's off, or a slow answer.
+  async speakOnServer(text) {
+    const parts = text.split(/(?<=[.!?])\s+/).filter((p) => p.trim());
+    // Words sooner: the first sentence plays from its first comma while the rest is made.
+    const comma = parts[0]?.indexOf(", ") ?? -1;
+    if (comma > 15 && parts[0].length - comma > 12) parts.splice(0, 1, parts[0].slice(0, comma + 1), parts[0].slice(comma + 2));
+    const lang = this.speechLang();
+    const fetchPart = (part) => {
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), 8000);
+      return fetch(`/api/tts?${new URLSearchParams({ text: part, lang })}`, { signal: ctrl.signal })
+        .then((r) => (r.ok ? r.blob() : null))
+        .catch(() => null)
+        .finally(() => clearTimeout(timer));
+    };
+    const el = this.audioEl || (this.audioEl = new Audio());
+    let next = fetchPart(parts[0]);
+    for (let i = 0; i < parts.length; i++) {
+      const blob = await next;
+      if (this.voiceState !== "speaking") return "";
+      if (!blob) return parts.slice(i).join(" ");
+      if (i + 1 < parts.length) next = fetchPart(parts[i + 1]);
+      const url = URL.createObjectURL(blob);
+      el.src = url;
+      // pause counts as done too: Stop pauses it, and a paused clip never "ends".
+      await new Promise((resolve) => {
+        el.onended = el.onerror = el.onpause = resolve;
+        el.play().catch(resolve);
+      });
+      URL.revokeObjectURL(url);
+    }
+    return "";
   },
   // Listen for one short spoken reply. (Not `listen()`: that name is the live-updates stream.)
   hear() {
@@ -408,8 +792,9 @@ window.sayInvoice = () => ({
     try {
       const resp = await fetch("/api/home");
       if (resp.ok) this.home = await resp.json();
+      this.loadFailed.home = !resp.ok;
     } catch {
-      /* keep the last view */
+      this.loadFailed.home = true; // keep the last view, if there is one
     }
   },
   async openMoney() {
@@ -421,20 +806,23 @@ window.sayInvoice = () => ({
   },
   async openDetail(kind, id) {
     this.detailRef = { kind, id };
+    this.unsnooze(kind, id);
     this.actionMsg = "";
     this.actionError = "";
     this.cancelArmed = false;
-    await this.refreshDetail();
+    if (this.detail && !(this.detail.kind === kind && this.detail.id === id)) this.detail = null;
     this.screen = "detail";
     window.scrollTo(0, 0);
+    await this.refreshDetail();
   },
   async refreshDetail() {
     if (!this.detailRef) return;
     try {
       const resp = await fetch(`/api/jobs/${this.detailRef.kind}/${this.detailRef.id}`);
       if (resp.ok) this.detail = await resp.json();
+      this.loadFailed.detail = !resp.ok;
     } catch {
-      /* keep what's on screen */
+      this.loadFailed.detail = true; // keep what's on screen
     }
   },
   stateLabel(d) {
@@ -680,8 +1068,9 @@ window.sayInvoice = () => ({
         this.approvalError = errorText(out, "Couldn't send that. Try again.");
         return;
       }
-      // Done (or already answered elsewhere): next card.
-      this.approvals = this.approvals.slice(1);
+      // Done (or already answered elsewhere): next card. By id, since "Later" can
+      // put the one on screen anywhere in the list.
+      this.approvals = this.approvals.filter((x) => x.message_id !== a.message_id);
       this.countering = false;
       this.replying = false;
     } catch {
@@ -841,7 +1230,9 @@ window.sayInvoice = () => ({
     } catch (e) {
       this.screen = "record";
       this.error = e.message;
-      if (input.text) this.typing = true;
+      // "Type it instead" is the fallback, so open the box (for a failed recording too).
+      this.typing = true;
+      this.$nextTick(() => this.$refs.jobText?.focus());
     }
   },
 
@@ -1252,9 +1643,10 @@ window.sayInvoice = () => ({
     this.saved = false;
     this.screen = "settings";
     try {
-      const [resp, chaseResp] = await Promise.all([fetch("/api/policy"), fetch("/api/chase/settings")]);
+      const [resp, chaseResp, wsResp] = await Promise.all([fetch("/api/policy"), fetch("/api/chase/settings"), fetch("/api/workspace")]);
       if (!resp.ok) throw new Error();
       this.policy = await resp.json();
+      if (wsResp.ok) this.biz = await wsResp.json();
       if (chaseResp.ok) this.autoChase = (await chaseResp.json()).auto_chase;
       for (const k of ["max_discount_pct", "floor_pct", "min_deposit_pct"]) this.policy[k] = Number(this.policy[k]);
     } catch {
@@ -1265,6 +1657,26 @@ window.sayInvoice = () => ({
     this.busy = true;
     this.error = "";
     try {
+      if (this.biz) {
+        const b = this.biz;
+        const wsResp = await fetch("/api/workspace", {
+          method: "PUT", headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ business_name: b.business_name, owner_name: b.owner_name, currency: b.currency,
+                                 default_due_days: Number(b.default_due_days) || 0, trade: b.trade ?? "",
+                                 invoice_note: b.invoice_note ?? "", onboarded: true }),
+        });
+        if (!wsResp.ok) {
+          this.error = errorText(await wsResp.json().catch(() => ({})), "Check your business details.");
+          return;
+        }
+        const w = await wsResp.json();
+        this.businessName = w.business_name;
+        this.invoiceNote = w.invoice_note || "";
+        this.ownerName = w.owner_name || "";
+        this.onb.trade = tradeKey(w.trade);
+        this.onb.currency = w.currency;
+        Object.assign(window.SAYINVOICE, { currency: w.currency, defaultDueDays: w.default_due_days, invoiceNote: this.invoiceNote });
+      }
       const resp = await fetch("/api/policy", {
         method: "PUT",
         headers: { "Content-Type": "application/json" },

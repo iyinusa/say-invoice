@@ -159,3 +159,103 @@ async def test_verify_webhook_rejects_missing_headers_without_calling_paypal() -
         raise AssertionError("must not call PayPal")
 
     assert not await _client(handler).verify_webhook({}, b"{}", "WH-ID")
+
+
+# ── plain-English errors ─────────────────────────────────────────────────────
+def _bad(issue: str, field: str = "") -> dict:
+    return {"details": [{"issue": issue, "field": field}]}
+
+
+@pytest.mark.parametrize(
+    ("status", "payload", "says"),
+    [
+        (0, {"name": "NETWORK"}, "Couldn't reach PayPal"),
+        (401, {"error": "invalid_client"}, "credentials"),
+        (429, {"name": "RATE_LIMIT_REACHED"}, "busy"),
+        (503, {"name": "SERVICE_UNAVAILABLE"}, "trouble right now"),
+        (422, _bad("INVALID_STRING_LENGTH", "/primary_recipients/0/billing_info/email_address"),
+         "email"),
+        (422, _bad("CURRENCY_NOT_SUPPORTED_FOR_RECEIVER"), "currency"),
+        (400, _bad("INVALID_PARAMETER_VALUE", "/detail/payment_term/due_date"), "due date"),
+        (400, _bad("INVALID_PARAMETER_VALUE", "/items/0/unit_amount/value"), "amounts"),
+        (422, _bad("INVOICE_ALREADY_PAID"), "already paid"),
+        (422, _bad("CANCEL_NOT_ALLOWED"), "won't cancel"),
+        (403, {"name": "NOT_AUTHORIZED"}, "Invoicing turned on"),
+        (404, {"name": "RESOURCE_NOT_FOUND"}, "can't find that invoice"),
+        (400, {"name": "INVALID_REQUEST", "message": "Request is not well-formed, syntactically "
+               "incorrect, or violates schema."}, "Check the details"),
+    ],
+)  # fmt: skip
+def test_errors_read_as_plain_english(status: int, payload: dict, says: str) -> None:
+    text = PayPalError(status, payload).human()
+    assert says in text
+    for jargon in ("schema", "syntactically", "INVALID_", "/items", "_"):
+        assert jargon not in text, text
+
+
+def test_unpaid_is_not_paid() -> None:
+    assert (
+        "already paid" not in PayPalError(422, {"details": [{"issue": "UNPAID_REMINDER"}]}).human()
+    )
+
+
+# ── no signal ────────────────────────────────────────────────────────────────
+async def test_a_dropped_read_is_retried_once() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        if calls == 1:
+            raise httpx.ConnectError("no route", request=request)
+        return httpx.Response(200, json={"id": "INV2-1", "status": "SENT"})
+
+    assert (await _client(handler).get_invoice("INV2-1"))["status"] == "SENT"
+    assert calls == 2
+
+
+async def test_no_connection_is_a_paypal_error_not_a_crash() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ReadTimeout("slow", request=request)
+
+    with pytest.raises(PayPalError) as err:
+        await _client(handler).get_invoice("INV2-1")
+    assert err.value.status == 0 and "Couldn't reach PayPal" in err.value.human()
+
+
+async def test_a_write_without_an_idempotency_key_is_not_retried() -> None:
+    calls = 0
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        nonlocal calls
+        calls += 1
+        raise httpx.ReadTimeout("slow", request=request)
+
+    pp = _client(handler)
+    with pytest.raises(PayPalError):
+        await pp._request("POST", "/v2/invoicing/invoices/INV2-1/remind", json_body={})
+    assert calls == 1  # it may have gone through: never risk doing it twice
+
+
+async def test_a_write_with_an_idempotency_key_is_retried() -> None:
+    seen: list[str] = []
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        seen.append(request.headers["paypal-request-id"])
+        if len(seen) == 1:
+            raise httpx.ReadTimeout("slow", request=request)
+        return httpx.Response(201, json={"id": "INV2-9"})
+
+    pp = _client(handler)
+    await pp._request("POST", "/v2/invoicing/invoices", json_body={}, request_id="tap-123")
+    assert seen == ["tap-123", "tap-123"]  # same id, so PayPal applies it once
+
+
+async def test_token_endpoint_down_is_a_paypal_error() -> None:
+    def handler(request: httpx.Request) -> httpx.Response:
+        raise httpx.ConnectError("down", request=request)
+
+    pp = PayPalClient("id", "secret", "https://pp.test", transport=httpx.MockTransport(handler))
+    with pytest.raises(PayPalError) as err:
+        await pp.get_invoice("INV2-1")
+    assert err.value.status == 0

@@ -196,10 +196,23 @@ async def create_and_send(
     return await push_to_paypal(session, paypal, ws, inv, today=today)
 
 
-def _note_with_plan_link(inv: Invoice) -> str:
+def note_for(inv: Invoice, ws: Workspace) -> str:
+    """The job's own note, else the business's usual one (set in setup). A deposit is paid
+    at once to book the work; everything else also offers a payment plan."""
+    note = inv.note or ws.invoice_note
     if inv.kind == "deposit":
-        return inv.note
-    return f"{inv.note}\n\n{plan_line(inv)}".strip()[:4000]
+        return note[:4000]
+    return f"{note}\n\n{plan_line(inv)}".strip()[:4000]
+
+
+def invoice_date_for(inv: Invoice, ws: Workspace) -> date:
+    """Today, as PayPal requires (never a demo-clock future). One already past its due
+    date ("it was due last Friday") is dated back on the usual terms, so PayPal shows
+    it issued before it fell due, as it really was."""
+    today = real_today()
+    if inv.due_date and inv.due_date < today:
+        return inv.due_date - timedelta(days=ws.default_due_days)
+    return today
 
 
 def to_paypal_draft(inv: Invoice, ws: Workspace, today: date) -> InvoiceDraft:
@@ -223,12 +236,9 @@ def to_paypal_draft(inv: Invoice, ws: Workspace, today: date) -> InvoiceDraft:
         ],
         recipient=Party(inv.client.name, inv.client.email),
         invoicer=Party(ws.owner_name, ws.owner_email, ws.business_name),
-        invoice_date=real_today(),  # PayPal refuses invoice dates in the future (demo clock)
+        invoice_date=invoice_date_for(inv, ws),  # never in the future, whatever the demo clock
         due_date=inv.due_date,
-        # A deposit is paid at once to book the work; everything else offers a plan.
-        note=(inv.note if inv.kind == "deposit" else f"{inv.note}\n\n{plan_line(inv)}".strip())[
-            :4000
-        ],
+        note=note_for(inv, ws),
         discount=inv.discount if inv.discount > 0 else None,
     )
 

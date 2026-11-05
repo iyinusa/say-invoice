@@ -39,6 +39,20 @@ docker compose up --build   # then open http://localhost:8000
 3. Put the sandbox Business account email in `SI_PAYPAL_MERCHANT_EMAIL`.
 4. Once the app has a public HTTPS URL, run `uv run python -m scripts.register_webhook https://<your-app>`. Copy the ID it prints into `SI_PAYPAL_WEBHOOK_ID`. Until then, invoices still turn "Paid" within a minute: the app re-checks open invoices with PayPal every 60 seconds, and the Sent screen checks every 8 seconds while it waits.
 
+### Demo data
+
+```bash
+uv run python -m scripts.seed_demo
+```
+
+This adds a realistic fortnight for a plumber, through the app's own services and your PayPal sandbox:
+- a paid invoice, one not yet due, and one 12 days overdue
+- an overdue invoice now on an agreed three-payment plan
+- a quote being negotiated, and a quote waiting for your answer
+- a booked job with its deposit paid, and a quote just sent
+
+Every invoice really exists in the sandbox, so Remind, the QR code and paying from PayPal all work. The clients' chat turns are scripted, so no Gemini key is needed. You can run it again: it adds nothing the second time. It refuses a live PayPal account.
+
 ### Spikes (end-to-end checks against the real sandbox)
 
 ```bash
@@ -60,7 +74,31 @@ When a card is ready, SayInvoice reads it aloud: "Invoice for £145.00 to Mr Ken
 - **Saying "send"** (or "yes", "go ahead") starts a visible 3-second countdown with a Stop button before anything is sent.
 - **Saying "change"** or "wait" hands control back. If the reply contains both, stop wins.
 - **What it reads** is built by code from the card, never by the AI.
-- **The voice** is the phone's own by default: instant, free, and in the card's language. Set `SI_TTS_ENGINE=kokoro` to use [KokoroTTS](https://github.com/hexgrad/kokoro) on the server instead. It's optional because it needs PyTorch (`uv sync --extra tts`, about 1 GB) and downloads a model on first use; it isn't in the Docker image.
+- **The voice** is the phone's own by default: instant, free, and in the card's language. Set `SI_TTS_ENGINE=kokoro` to use [KokoroTTS](https://github.com/hexgrad/kokoro) on the server instead. It's optional because it needs PyTorch (about 1 GB) and an ~330 MB model:
+
+- **Locally:** run `uv sync --extra tts`. The model downloads on first use.
+- **In Docker:** set `SI_INSTALL_TTS=true` and run `docker compose up --build`. The image then includes Kokoro, espeak-ng and the model, so the first read-back is quick.
+
+If Kokoro is switched on but not installed, the app logs a warning at startup and uses the phone's voice. It never errors.
+
+**How Kokoro stays fast:**
+- **Loaded at startup.** The server loads it in the background when it starts, never on someone's first tap. It loads one shared model, plus each language in `SI_TTS_PRELOAD` (default `en-GB,en-US`): pronunciation rules, voice pack and one warm-up inference. The fixed "Say send to send it…" sentences are made during that warm-up and cached. Startup takes about 15 to 20 seconds on a laptop CPU; `GET /api/tts/status` shows progress, and until it's ready the phone's voice reads.
+- **One sentence at a time.** The phone asks for one sentence at a time, the first split at its comma, and plays each while the next is made. On a laptop CPU the first words come about 2 seconds after the card appears. Kokoro makes speech about 3 times faster than it plays, so there are no gaps after that.
+- **Audio ready on the first tap.** The first tap plays a moment of silence. That unlocks audio on iPhone and starts the audio output early, so the first read-back doesn't stall.
+- **Nothing downloaded at runtime in Docker.** The image downloads the model and every voice pack at build time and runs with `HF_HUB_OFFLINE=1`.
+
+## First run and installing on a phone
+
+The first time the app opens, a short guided setup (about a minute) shows a live preview of your invoice that builds itself as you answer:
+
+1. **You:** business name, first name and trade. The trade appears on quote and payment pages and sets the sample job in the preview and the examples.
+2. **Invoices:** currency, when invoices fall due, and a note for every invoice (PayPal's "Note to recipient" unless a job has its own).
+3. **Deal rules:** most off labour, the secret lowest price, and the deposit. A live haggle shows what the Deal Agent would offer, worked out the way PolicyGuard prices it.
+4. **Getting paid:** how many payments a plan may have, and whether the Chase Agent's reminders need your approval or go out on their own.
+
+A setup left halfway picks up where it was. Everything can be changed later under ⚙ Settings. Existing databases skip setup after `alembic upgrade head`.
+
+SayInvoice is an installable web app. On the deployed https URL, use **Add to Home Screen** (Safari) or **Install app** (Chrome). A small service worker lets the app open with no signal; nothing about money is ever cached, so every invoice, quote and payment request goes to the server. On plain http, other than localhost, the browser won't install it.
 
 ## Parser accuracy
 
@@ -96,9 +134,32 @@ uv run pytest
 uv run ruff check .
 ```
 
+## Security
+
+- **Owner sign-in.** The tradesperson's app and its API need `SI_OWNER_PASSCODE`. One passcode, then a signed, HttpOnly cookie that lasts 30 days. Changing the passcode signs every device out.
+  - Locally, with no passcode set, the app is open.
+  - In production it **refuses to start** without one, so it is never public by accident.
+  - Clients never sign in: their quote and plan pages are behind 128-bit links.
+- **What stays public:** the client pages (`/q/…`, `/p/…`), PayPal's webhook, health, static files and the sign-in page.
+- **Webhooks are verified.** Every webhook is checked with PayPal's signature API. Even then, the app re-reads the invoice from PayPal rather than trusting the message body.
+- **Cross-site writes are refused.** An owner request whose `Origin` is another site gets a 403, and the cookie is `SameSite=Lax`.
+- **Rate limits, per IP:**
+
+  | What | Limit |
+  |---|---|
+  | Reading a job (Gemini) | 30 a minute, 300 an hour |
+  | Client chat (Deal and Plan agents) | 10 a minute, 60 an hour |
+  | Accepting a quote or plan | 20 a minute |
+  | Server voice | 60 a minute |
+  | Sign-in attempts | 5 a minute, 30 an hour |
+
+- **Prompt injection.** Client chat is untrusted. The agents never see the floor price, and PolicyGuard prices every offer in code. Every amount or percentage the agent writes must match what code computed. Each message is a single line of the transcript, so a client can't type a fake "Owner:" turn. `tests/test_prompt_injection.py` runs the classic attacks against an agent scripted to fall for every one.
+- **No personal data in logs.** Logs carry ids and amounts. Emails, phone numbers and client-link tokens are masked, and the access log drops query strings.
+- **Secrets only in the environment.** The Docker image never contains them.
+
 ## Deploy
 
-[`render.yaml`](render.yaml) is a Render Blueprint. It sets up the web service (Docker: Python plus PayPal's Node MCP server) and a Postgres database.
+[`render.yaml`](render.yaml) is a Render Blueprint. It sets up the web service (Docker: Python plus PayPal's Node MCP server), the hourly Chase Agent job and a Postgres database, all on paid plans, so there are no cold starts. Render asks for the secrets once, including `SI_OWNER_PASSCODE`, and generates `SI_SESSION_SECRET` itself. For judges, put the passcode in the submission notes.
 
 ## License
 

@@ -23,6 +23,14 @@ class Settings(BaseSettings):
 
     env: str = "development"
 
+    # ── Owner sign-in ───────────────────────────────────────────────────────
+    # The passcode for the tradesperson's app. Empty = open (local only); production
+    # refuses to start without one. Client pages (/q, /p) never need it.
+    owner_passcode: str = ""
+    # Optional extra key for the sign-in cookie. Changing it (or the passcode) signs
+    # every device out. Defaults to deriving from the PayPal secret.
+    session_secret: str = ""
+
     # Where the app is reachable from the outside world. Used to build the
     # client-facing quote and payment-plan links (`/q/{token}`, `/p/{token}`).
     public_base_url: str = "http://localhost:8000"
@@ -71,6 +79,10 @@ class Settings(BaseSettings):
     # Voice read-back: "browser" (the phone's own voice: instant, free, multilingual) or
     # "kokoro" (KokoroTTS on the server; needs `uv sync --extra tts` and more memory).
     tts_engine: str = "browser"
+    # Languages Kokoro loads at startup, so the first read-back is fast. Others load on
+    # first use (G2P only; the model is shared). Comma-separated BCP-47, e.g. "en-GB,es".
+    # Both English voices by default: the read-back follows the phone's locale (en-GB/en-US).
+    tts_preload: str = "en-GB,en-US"
 
     # The "simulate N days later" control for demos. Turn off for a real business.
     demo_clock_enabled: bool = True

@@ -22,6 +22,7 @@ from app.logging_config import get_logger
 from app.models import Workspace
 from app.routers.invoices import current_workspace
 from app.schemas.job import ParsedJob, ParseResult
+from app.security.ratelimit import PARSE
 from app.services import clients, clock
 from app.settings import Settings, get_settings
 
@@ -76,7 +77,7 @@ def _audio_mime(content_type: str | None) -> str:
     return mime
 
 
-@router.post("/parse", response_model=ParseResult)
+@router.post("/parse", response_model=ParseResult, dependencies=[Depends(PARSE)])
 async def parse_job(
     audio: UploadFile | None = File(None),
     text: str = Form(""),
@@ -115,7 +116,7 @@ async def parse_job(
         today = _today(tz) + clock.offset(ws)  # "due Friday" counts from the demo clock
         result = await parser.parse(
             today=today,
-            default_currency=settings.default_currency,
+            default_currency=ws.currency,
             text=text,
             audio=audio_bytes,
             audio_mime=mime,
@@ -128,7 +129,7 @@ async def parse_job(
         ) from exc
 
     result = await _remember_client(session, ws, result, mode=mode, today=today,
-                                    currency=settings.default_currency)  # fmt: skip
+                                    currency=ws.currency)  # fmt: skip
     log.info(
         "parsed",
         mode=result.mode,

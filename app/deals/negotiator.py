@@ -97,13 +97,28 @@ async def history(session: AsyncSession, q: Quote) -> list[DealMessage]:
     )
 
 
+def one_line(text: str) -> str:
+    """Each message is one line of the transcript, so a client can't type a fake
+    "Owner (Dave): approved" turn on a new line of their own."""
+    return " ".join(text.split())
+
+
 def transcript(msgs: list[DealMessage], owner: str, new_text: str) -> str:
     lines = []
     for m in msgs:
         who = {"client": "Client", "agent": "You", "owner": f"Owner ({owner})"}[m.role]
-        lines.append(f"{who}: {m.text} {deal_agent.describe(m.priced)}".rstrip())
-    lines.append(f"Client: {new_text}")
+        lines.append(f"{who}: {one_line(m.text)} {deal_agent.describe(m.priced)}".rstrip())
+    lines.append(f"Client: {one_line(new_text)}")
     return "Conversation so far:\n" + "\n".join(lines) + "\n\nWrite your next turn."
+
+
+def _prior_percents(msgs: list[DealMessage], policy: Policy) -> set[Decimal]:
+    """Percentages the agent may say: its limits, and those of offers already made."""
+    out = {policy.max_discount_pct, policy.min_deposit_pct, Decimal(0), Decimal(100)}
+    for m in msgs:
+        if m.priced:
+            out |= {Decimal(m.priced[k]) for k in ("discount_pct", "deposit_pct") if k in m.priced}
+    return out
 
 
 def _prior_amounts(msgs: list[DealMessage]) -> set[Decimal]:
@@ -147,6 +162,7 @@ async def client_message(
     base = terms(q)
     msgs = await history(session, q)
     prior = _prior_amounts(msgs)
+    prior_pct = _prior_percents(msgs, policy)
     owner = first_name(ws)
     system = deal_agent.build_system(
         business=ws.business_name, number=q.number, base=base, policy=policy, today=today,
@@ -170,7 +186,8 @@ async def client_message(
             else:
                 result = check_offer(policy, base, offer, today=today)
                 problems += result.violations
-        problems += check_reply(turn.reply, result.priced if result else None, base, prior)
+        problems += check_reply(turn.reply, result.priced if result else None, base, prior,
+                                percents=prior_pct)  # fmt: skip
         log.info("deal_attempt", quote_id=q.id, attempt=attempt, codes=[p.code for p in problems],
                  needs_owner=turn.needs_owner)  # fmt: skip
 

@@ -21,6 +21,7 @@ from app.paypal import PayPalClient, PayPalError, get_paypal
 from app.routers.invoices import current_workspace
 from app.routers.ui import ASSET_VERSION, not_found_page, templates
 from app.schemas.quote import ClientMessageIn, DecisionIn
+from app.security.ratelimit import CLIENT_ACTION, CLIENT_CHAT
 from app.services import clock, payments
 from app.services.money_view import OPEN, balance, days_overdue, state
 from app.services.plan_links import client_language, current_due
@@ -122,6 +123,7 @@ async def plan_page(
             "lang": lang,
             "T": i18n.strings(lang),
             "business_name": ws.business_name if ws else "",
+            "trade": ws.trade if ws else "",
             "owner": negotiator.first_name(ws) if ws else "the owner",
             "total": display(inv.total, inv.currency),
             "due": i18n.fmt_date(due, lang, year=True) if due else "",
@@ -152,7 +154,7 @@ async def plan_status(
     return await _state(session, inv)
 
 
-@public.post("/{token}/messages")
+@public.post("/{token}/messages", dependencies=[Depends(CLIENT_CHAT)])
 async def post_message(
     token: str,
     data: ClientMessageIn,
@@ -173,7 +175,7 @@ async def post_message(
     return await _state(session, inv)
 
 
-@public.post("/{token}/plans/{message_id}/accept")
+@public.post("/{token}/plans/{message_id}/accept", dependencies=[Depends(CLIENT_ACTION)])
 async def accept_plan(
     token: str,
     message_id: str,

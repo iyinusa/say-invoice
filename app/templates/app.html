@@ -4,8 +4,15 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
   <meta name="theme-color" content="#0b6b46">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="default">
+  <meta name="apple-mobile-web-app-title" content="SayInvoice">
   <title>SayInvoice</title>
-  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6b46'/%3E%3Cpath d='M16 19a3.5 3.5 0 0 0 3.5-3.5V9a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 16 19Zm6-4a6 6 0 0 1-12 0' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 21v4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
+  <link rel="manifest" href="/manifest.webmanifest">
+  <link rel="apple-touch-icon" href="/static/icons/apple-touch-icon.png">
+  <link rel="icon" type="image/svg+xml" href="/static/icons/icon.svg">
+  <link rel="alternate icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Crect width='32' height='32' rx='8' fill='%230b6b46'/%3E%3Cpath d='M16 19a3.5 3.5 0 0 0 3.5-3.5V9a3.5 3.5 0 1 0-7 0v6.5A3.5 3.5 0 0 0 16 19Zm6-4a6 6 0 0 1-12 0' stroke='white' stroke-width='2' fill='none' stroke-linecap='round'/%3E%3Cpath d='M16 21v4' stroke='white' stroke-width='2' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="/static/app.css?v={{ v }}">
   <script>
     window.SAYINVOICE = {
@@ -14,6 +21,11 @@
       minDeposit: {{ min_deposit | tojson }},
       ttsEngine: {{ tts_engine | tojson }},
       languages: {{ languages | tojson }},
+      onboarded: {{ onboarded | tojson }},
+      businessName: {{ business_name | tojson }},
+      invoiceNote: {{ invoice_note | tojson }},
+      ownerName: {{ owner_name | tojson }},
+      trade: {{ trade | tojson }},
     };
   </script>
   <script defer src="/static/app.js?v={{ v }}"></script>
@@ -25,25 +37,313 @@
   <header class="topbar">
     <span class="brand">Say<b>Invoice</b></span>
     <span class="topbar-right">
-      <span class="biz">{{ business_name }}</span>
-      <button class="gear" x-show="screen === 'record'" @click="openSettings()" aria-label="Deal rules">
+      <span class="biz" x-show="screen !== 'onboarding'" x-text="businessName">{{ business_name }}</span>
+      <button class="gear" x-show="screen === 'record'" @click="openSettings()" aria-label="Settings">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M19.4 13a7.6 7.6 0 0 0 0-2l2-1.6-2-3.4-2.4 1a7.4 7.4 0 0 0-1.7-1L15 3.5h-4L10.6 6a7.4 7.4 0 0 0-1.7 1l-2.4-1-2 3.4 2 1.6a7.6 7.6 0 0 0 0 2l-2 1.6 2 3.4 2.4-1a7.4 7.4 0 0 0 1.7 1l.4 2.5h4l.4-2.5a7.4 7.4 0 0 0 1.7-1l2.4 1 2-3.4ZM13 15.5a3.5 3.5 0 1 1 0-7 3.5 3.5 0 0 1 0 7Z" transform="translate(-1 0)"/></svg>
       </button>
     </span>
   </header>
+  <div class="offline" role="status" x-show="offline" x-transition.opacity>
+    <span class="offline-dot" aria-hidden="true"></span>
+    <span>You're offline. Nothing is lost: send it when you have signal.</span>
+  </div>
 
   <div class="demo-banner" x-show="clockInfo && clockInfo.offset_days > 0" role="status">
     <span x-text="`Demo clock +${clockInfo?.offset_days} day${clockInfo?.offset_days === 1 ? '' : 's'} · ${clockInfo?.today_label}`"></span>
     <button @click="setClock(0)" aria-label="Reset the demo clock to today">Reset</button>
   </div>
 
-  <!-- ── 1. Record ─────────────────────────────────────────────── -->
-  <section class="screen record" x-show="screen === 'record'">
-    <h1>What did you do?</h1>
-    <p class="hint">Say the job, the price and who it's for.<br>
-      <span class="example">“Fixed Mr Kennedy's boiler, 2 hours at £60, plus £25 for a valve,
-        email kennedy@example.com”</span></p>
+  <!-- ── 0. Onboarding: a minute, first run only ──────────────── -->
+  {% macro paper(variant="") %}
+  <figure class="paper {{ variant }}" aria-label="A preview of your invoices">
+    <div class="paper-head">
+      <span class="monogram" aria-hidden="true" x-text="onbInitials()"></span>
+      <div class="paper-who">
+        <b x-text="onb.business_name.trim() || 'Your business'"></b>
+        <small x-text="[onbTradeLabel(), onb.owner_name.trim()].filter(Boolean).join(' · ') || 'Your trade · your name'"></small>
+      </div>
+      <div class="paper-kind"><span>Invoice</span><small>0001</small></div>
+    </div>
+    <div class="paper-to"><span>Billed to</span><b>Mr Kennedy</b></div>
+    <ul class="paper-lines">
+      <template x-for="l in onbJob().lines" :key="l.name">
+        <li><span><b x-text="l.name"></b><small x-text="l.detail"></small></span><span class="amt" x-text="onbMoney(l.cents)"></span></li>
+      </template>
+    </ul>
+    <div class="paper-foot">
+      <span class="paper-due" x-text="onbDueLabel()"></span>
+      <span class="paper-total"><small>Total</small><b x-text="onbMoney(onbJob().total)"></b></span>
+    </div>
+    <p class="paper-note" x-show="onb.invoice_note.trim()" x-text="`“${onb.invoice_note.trim()}”`"></p>
+    <div class="paper-pay"><span>Pay online</span><small>Card or PayPal</small></div>
+    <span class="paper-stamp" aria-hidden="true">Ready</span>
+  </figure>
+  {% endmacro %}
 
+  <section class="screen onboarding" x-show="screen === 'onboarding'" :class="{ back: onb.dir === 'back' }"
+           @keydown.enter="onbEnter($event)">
+
+    <!-- Welcome -->
+    <div class="onb-pane onb-welcome" x-show="onb.step === 0">
+      <div class="hero" aria-hidden="true">
+        <div class="hero-orb">
+          <span class="hero-ring"></span><span class="hero-ring r2"></span>
+          <svg viewBox="0 0 24 24"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg>
+        </div>
+        <div class="hero-wave"><i></i><i></i><i></i><i></i><i></i><i></i><i></i></div>
+        <p class="hero-said"><span x-text="onbHero().said"></span></p>
+        <div class="hero-doc">
+          <div class="hero-doc-head"><b>Invoice 0001</b><span class="hero-paid">Paid</span></div>
+          <div class="hero-doc-line"><span>Boiler repair</span><span x-text="onbMoney(onbHero().labour)"></span></div>
+          <div class="hero-doc-line"><span>Pressure valve</span><span x-text="onbMoney(onbHero().parts)"></span></div>
+          <div class="hero-doc-total"><span>Total</span><b x-text="onbMoney(onbHero().total)"></b></div>
+        </div>
+      </div>
+      <h1 class="onb-hero-title" tabindex="-1">Say the job.<br><span>Get paid.</span></h1>
+      <p class="hint">Talk through the work and SayInvoice does the paperwork: quotes, deals, deposits,
+        invoices and reminders, paid through PayPal.</p>
+      <ol class="lifecycle" aria-label="What SayInvoice handles">
+        <li>Quote</li><li>Deal</li><li>Deposit</li><li>Invoice</li><li>Chase</li>
+      </ol>
+      <button class="btn primary big onb-cta" @click="onbGo(1)">Set up my business
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M7.3 4.3a1 1 0 0 1 1.4 0l5 5a1 1 0 0 1 0 1.4l-5 5a1 1 0 0 1-1.4-1.4l4.3-4.3-4.3-4.3a1 1 0 0 1 0-1.4Z"/></svg>
+      </button>
+      <p class="onb-small">Four short steps, about a minute. Change anything later in Settings.</p>
+    </div>
+
+    <!-- Progress -->
+    <div class="onb-progress" x-show="onb.step >= 1 && onb.step <= 4">
+      <p class="onb-count" x-text="`Step ${onb.step} of 4`"></p>
+      <ol class="onb-rail" aria-label="Setup progress">
+        <template x-for="(name, i) in ONB_STEPS" :key="name">
+          <li :class="{ done: onb.step > i + 1, on: onb.step === i + 1 }" :aria-current="onb.step === i + 1 ? 'step' : null">
+            <button type="button" :disabled="i + 1 > onb.reached" @click="onbGo(i + 1)">
+              <span class="rail-bar"></span><span class="rail-name" x-text="name"></span>
+            </button>
+          </li>
+        </template>
+      </ol>
+    </div>
+
+    <!-- 1. You -->
+    <div class="onb-pane" x-show="onb.step === 1">
+      <h1 tabindex="-1">Who's sending the invoices?</h1>
+      <p class="hint">Clients see this on every quote, invoice and payment page.</p>
+      {{ paper("compact") }}
+      <div class="card onb-card">
+        <div class="field">
+          <label class="field-label" for="onb-biz">Business name</label>
+          <input id="onb-biz" class="control" type="text" x-model="onb.business_name" maxlength="120"
+                 placeholder="e.g. Dave's Plumbing & Heating" autocomplete="organization">
+        </div>
+        <div class="field">
+          <label class="field-label" for="onb-owner">Your first name</label>
+          <input id="onb-owner" class="control" type="text" x-model="onb.owner_name" maxlength="120"
+                 placeholder="e.g. Dave" autocomplete="given-name">
+          <p class="field-help">Signs your reminders. The assistant tells clients “let me check with
+            <span x-text="onbFirstName() || 'you'"></span>”.</p>
+        </div>
+        <div class="field">
+          <span class="field-label" id="onb-trade-label">What do you do?</span>
+          <div class="chips" role="radiogroup" aria-labelledby="onb-trade-label">
+            <template x-for="t in TRADES" :key="t.key">
+              <button type="button" class="chip" role="radio" :aria-checked="onb.trade === t.key"
+                      @click="onbPickTrade(t.key)" x-text="t.label"></button>
+            </template>
+          </div>
+          <input class="control onb-other" type="text" x-show="onb.trade === 'other'" x-model="onb.trade_other"
+                 maxlength="40" placeholder="e.g. Dog walker, Tutor, Locksmith" aria-label="Your trade">
+        </div>
+      </div>
+      <div class="paypal-acct" x-show="onb.paypal_account">
+        <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 1.7 3.3 4.5v4.7c0 4.1 2.8 7.9 6.7 9.1 3.9-1.2 6.7-5 6.7-9.1V4.5L10 1.7Zm-1 12-3.2-3.2 1.4-1.4L9 10.9l3.9-3.9 1.4 1.4L9 13.7Z"/></svg>
+        <span><small>Payments go straight to</small><b x-text="onb.paypal_account"></b>
+          <small x-text="onb.paypal_env === 'sandbox' ? 'PayPal sandbox business account' : 'Your PayPal business account'"></small></span>
+      </div>
+    </div>
+
+    <!-- 2. Invoices -->
+    <div class="onb-pane" x-show="onb.step === 2">
+      <h1 tabindex="-1">How you like to bill</h1>
+      <p class="hint">Every invoice starts like this. You can still say “due Friday” on any job.</p>
+      {{ paper() }}
+      <div class="card onb-card">
+        <div class="field">
+          <span class="field-label" id="onb-cur-label">Currency</span>
+          <div class="chips cur-chips" role="radiogroup" aria-labelledby="onb-cur-label">
+            <template x-for="c in TOP_CURRENCIES" :key="c">
+              <button type="button" class="chip cur" role="radio" :aria-checked="onb.currency === c" @click="onb.currency = c">
+                <b x-text="onbSym(c)"></b><span x-text="c"></span>
+              </button>
+            </template>
+            <label class="chip cur more" :class="{ picked: !TOP_CURRENCIES.includes(onb.currency) }">
+              <span class="sr-only">Another currency</span>
+              <select x-model="onb.currency" aria-label="Another currency">
+                <option value="" disabled>More</option>
+                <template x-for="c in onb.currencies.filter((c) => !TOP_CURRENCIES.includes(c))" :key="c">
+                  <option :value="c" x-text="c" :selected="c === onb.currency"></option>
+                </template>
+              </select>
+              <span aria-hidden="true" x-text="TOP_CURRENCIES.includes(onb.currency) ? 'More' : onb.currency"></span>
+            </label>
+          </div>
+          <p class="field-help">The 25 currencies PayPal can invoice in. Naira (₦) isn't one of them yet.</p>
+        </div>
+        <div class="field">
+          <span class="field-label">Invoices are due</span>
+          <div class="segmented due-pick" role="radiogroup" aria-label="Invoices are due">
+            <template x-for="d in [[0, 'On receipt'], [7, '7 days'], [14, '14 days'], [30, '30 days']]" :key="d[0]">
+              <button type="button" role="radio" :aria-checked="onb.default_due_days === d[0]" @click="onb.default_due_days = d[0]" x-text="d[1]"></button>
+            </template>
+          </div>
+        </div>
+        <div class="field">
+          <label class="field-label" for="onb-note">A note on every invoice <span class="optional">optional</span></label>
+          <textarea id="onb-note" class="control" rows="2" x-model="onb.invoice_note" maxlength="1000"
+                    placeholder="e.g. Thanks for your business!"></textarea>
+          <div class="chips small">
+            <template x-for="s in onbNoteIdeas().filter((s) => s !== onb.invoice_note.trim())" :key="s">
+              <button type="button" class="chip ghost" @click="onb.invoice_note = s" x-text="s"></button>
+            </template>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 3. Deal rules -->
+    <div class="onb-pane" x-show="onb.step === 3">
+      <h1 tabindex="-1">Your deal rules</h1>
+      <p class="hint">Clients can haggle on your quote page. The assistant negotiates for you, but code checks
+        every offer against these rules, so it can't give more away.</p>
+      <div class="sim" aria-live="polite">
+        <div class="sim-head">
+          <span>Quote · <span x-text="onbJob().lines[0].name"></span></span>
+          <span class="sim-price">
+            <s x-show="onbDeal().pct > 0 && !onb.ask_first" x-text="onbMoney(onbJob().total)"></s>
+            <b x-text="onbMoney(onb.ask_first ? onbJob().total : onbDeal().price)"></b>
+          </span>
+        </div>
+        <p class="bubble them">Could you do it any cheaper?</p>
+        <p class="bubble agent" x-text="onbDeal().reply"></p>
+        <p class="sim-verdict" :class="onbDeal().tone">
+          <svg viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a8 8 0 1 0 0 16 8 8 0 0 0 0-16Zm-1 11.4L5.8 10.2l1.4-1.4L9 10.6l3.8-3.8 1.4 1.4L9 13.4Z"/></svg>
+          <span x-text="onbDeal().verdict"></span>
+        </p>
+      </div>
+      <div class="card onb-card sliders">
+        <div class="slider">
+          <label for="onb-disc"><b>Most off labour</b><output x-text="`${onb.max_discount_pct}%`"></output></label>
+          <input id="onb-disc" type="range" min="0" max="30" step="1" x-model.number="onb.max_discount_pct"
+                 :style="`--p:${onb.max_discount_pct / 30 * 100}%`">
+          <small>Materials always stay full price.</small>
+        </div>
+        <div class="slider">
+          <label for="onb-floor"><b>Never below</b><output x-text="`${onb.floor_pct}% of the price`"></output></label>
+          <input id="onb-floor" type="range" min="50" max="100" step="1" x-model.number="onb.floor_pct"
+                 :style="`--p:${(onb.floor_pct - 50) / 50 * 100}%`">
+          <small><svg class="lock" viewBox="0 0 20 20" aria-hidden="true"><path d="M10 2a4 4 0 0 0-4 4v2H5a1 1 0 0 0-1 1v8a1 1 0 0 0 1 1h10a1 1 0 0 0 1-1V9a1 1 0 0 0-1-1h-1V6a4 4 0 0 0-4-4Zm-2 6V6a2 2 0 1 1 4 0v2H8Z"/></svg> Secret: never shown to clients or the AI.</small>
+        </div>
+        <div class="slider">
+          <label for="onb-dep"><b>Deposit to book</b><output x-text="onb.min_deposit_pct ? `${onb.min_deposit_pct}%` : 'None'"></output></label>
+          <input id="onb-dep" type="range" min="0" max="50" step="5" x-model.number="onb.min_deposit_pct"
+                 :style="`--p:${onb.min_deposit_pct / 50 * 100}%`">
+          <small>Paid through PayPal the moment they accept.</small>
+        </div>
+        <label class="setting onb-switch">
+          <span class="setting-text"><b>Ask me before agreeing any deal</b><small>Even ones inside these rules.</small></span>
+          <input type="checkbox" role="switch" class="switch" x-model="onb.ask_first">
+        </label>
+      </div>
+    </div>
+
+    <!-- 4. Getting paid -->
+    <div class="onb-pane" x-show="onb.step === 4">
+      <h1 tabindex="-1">Getting paid</h1>
+      <p class="hint">What happens when a client can't pay in one go, or forgets.</p>
+      <div class="card onb-card">
+        <div class="field">
+          <span class="field-label">Let clients pay in parts, up to</span>
+          <div class="segmented plan-pick" role="radiogroup" aria-label="Let clients pay in parts, up to (payments)">
+            <template x-for="n in [1, 2, 3, 4, 6]" :key="n">
+              <button type="button" role="radio" :aria-checked="onb.max_instalments === n" @click="onb.max_instalments = n"
+                      x-text="n === 1 ? 'Off' : `${n}×`"></button>
+            </template>
+          </div>
+          <div class="plan-bar" :class="{ off: onb.max_instalments === 1 }" aria-hidden="true">
+            <template x-for="(cents, i) in onbPlan()" :key="i">
+              <span :style="`--d:${i * 60}ms`"><b x-text="onbMoney(cents)"></b><small x-text="i === 0 ? 'Today' : `+${i * 2} weeks`"></small></span>
+            </template>
+          </div>
+          <p class="field-help" x-text="onb.max_instalments === 1
+            ? 'Clients pay in full. A request for a plan comes to you.'
+            : `On an unpaid ${onbMoney(onbJob().total)} invoice, the assistant can agree up to ${onb.max_instalments} payments.`"></p>
+        </div>
+        <div class="field">
+          <span class="field-label" id="onb-chase-label">Reminders when they're late</span>
+          <div class="choices" role="radiogroup" aria-labelledby="onb-chase-label">
+            <button type="button" class="choice" role="radio" :aria-checked="!onb.auto_chase" @click="onb.auto_chase = false">
+              <b>I'll approve each one <span class="tag">Recommended</span></b><small>The Chase Agent writes it and you tap send.</small>
+            </button>
+            <button type="button" class="choice" role="radio" :aria-checked="onb.auto_chase" @click="onb.auto_chase = true">
+              <b>Send them for me</b><small>Polite reminders go out on their own.</small>
+            </button>
+          </div>
+          <ol class="ladder" aria-label="When reminders go out">
+            <template x-for="r in onbLadder()" :key="r.name">
+              <li><span class="ladder-dot" :class="r.cls"></span><b x-text="r.name"></b><small x-text="r.when"></small></li>
+            </template>
+          </ol>
+          <p class="field-help">They stop the moment the client pays, and you can always run them yourself.</p>
+        </div>
+      </div>
+    </div>
+
+    <!-- 5. Ready -->
+    <div class="onb-pane onb-done" x-show="onb.step === 5">
+      <div class="done-mark" aria-hidden="true"><svg viewBox="0 0 52 52"><circle cx="26" cy="26" r="24"/><path d="m15 27 7 7 15-16"/></svg></div>
+      <h1 tabindex="-1" x-text="`You're all set${onb.owner_name.trim() ? ', ' + onbFirstName() : ''}.`"></h1>
+      <p class="hint">Here's how your invoices will look. Tap a rule to change it.</p>
+      {{ paper("ready") }}
+      <ul class="summary-chips">
+        <li><button type="button" @click="onbGo(2)" x-text="`${onb.currency} · ${onb.default_due_days ? 'due in ' + onb.default_due_days + ' days' : 'due on receipt'}`"></button></li>
+        <li><button type="button" @click="onbGo(3)" x-text="onb.max_discount_pct ? `Up to ${onb.max_discount_pct}% off labour` : 'No discounts'"></button></li>
+        <li><button type="button" @click="onbGo(3)" x-text="onb.min_deposit_pct ? `${onb.min_deposit_pct}% deposit` : 'No deposit'"></button></li>
+        <li><button type="button" @click="onbGo(3)" x-text="onb.ask_first ? 'Deals: ask me first' : 'Deals: agreed inside rules'"></button></li>
+        <li><button type="button" @click="onbGo(4)" x-text="onb.max_instalments > 1 ? `Plans up to ${onb.max_instalments}` : 'No payment plans'"></button></li>
+        <li><button type="button" @click="onbGo(4)" x-text="onb.auto_chase ? 'Reminders: automatic' : 'Reminders: you approve'"></button></li>
+      </ul>
+      <h2 class="section-title">Try saying</h2>
+      <div class="examples">
+        <template x-for="ex in examples()" :key="ex.label">
+          <button class="example-card" @click="tryExample(ex.text)">
+            <span class="example-kind" x-text="ex.label"></span>
+            <span x-text="`“${ex.text}”`"></span>
+          </button>
+        </template>
+      </div>
+    </div>
+
+    <p class="error" role="alert" x-show="error" x-text="error"></p>
+    <div class="onb-nav" x-show="onb.step >= 1">
+      <button class="btn ghost" x-show="onb.step <= 4" @click="onbGo(onb.step - 1)">Back</button>
+      <button class="btn primary big" x-show="onb.step < 4" :disabled="!onbCanContinue()" @click="onbNext()">Continue</button>
+      <button class="btn primary big" x-show="onb.step === 4" :disabled="busy" @click="onbNext()"
+              x-text="busy ? 'Saving…' : 'Finish setup'"></button>
+      <button class="btn primary big" x-show="onb.step === 5" @click="finishOnboarding()">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 15a3 3 0 0 0 3-3V6a3 3 0 1 0-6 0v6a3 3 0 0 0 3 3Z"/><path d="M19 11a1 1 0 1 0-2 0 5 5 0 0 1-10 0 1 1 0 1 0-2 0 7 7 0 0 0 6 6.92V21h-2a1 1 0 1 0 0 2h6a1 1 0 1 0 0-2h-2v-3.08A7 7 0 0 0 19 11Z"/></svg>
+        Start talking
+      </button>
+    </div>
+  </section>
+
+  <!-- ── 1. Record ─────────────────────────────────────────────── -->
+  <section class="screen record" x-show="screen === 'record'" :class="{ 'has-jobs': jobs.length && !typing && !recording }">
+   <div class="record-stage">
+    <p class="greet" x-text="greeting()"></p>
+    <h1>What did you do?</h1>
+    <p class="hint">Say the job, the price and who it's for.</p>
+
+    <div class="mic-wrap" :class="{ live: recording }">
     <button class="mic" :class="{ live: recording }" @click="toggleRecording('job')"
             :aria-label="recording ? 'Stop recording' : 'Start recording'">
       <svg viewBox="0 0 24 24" aria-hidden="true" x-show="!recording">
@@ -52,8 +352,10 @@
       </svg>
       <svg viewBox="0 0 24 24" aria-hidden="true" x-show="recording"><rect x="6" y="6" width="12" height="12" rx="2"/></svg>
     </button>
+    </div>
     <p class="mic-label" aria-live="polite"
        x-text="recording ? `Listening… ${clock(seconds)} · tap to stop` : 'Tap to talk'"></p>
+    <p class="say-like" x-show="!recording && !typing"><span>For example</span><span x-text="`“${examples()[0].text}”`"></span></p>
     <label class="readback-toggle" x-show="canSpeak">
       <input type="checkbox" role="switch" class="switch small" :checked="readBack" @change="toggleReadBack()">
       <span>Read cards aloud, then say “send”</span>
@@ -72,6 +374,7 @@
       Or type it instead</button>
 
     <p class="error" role="alert" x-show="error" x-text="error"></p>
+   </div>
 
     <section class="jobs" x-show="jobs.length && !typing && !recording">
       <h2 class="group-title">Jobs to finish</h2>
@@ -273,7 +576,7 @@
       <div class="field" x-show="noteOpen || card.notes">
         <label class="field-label" for="note">Note to client <span class="optional">optional</span></label>
         <textarea id="note" class="control" rows="2" x-model="card.notes" maxlength="4000"
-                  placeholder="Thanks for having me round!"></textarea>
+                  :placeholder="invoiceNote ? `Leave empty for your usual note: ${invoiceNote}` : 'Thanks for having me round!'"></textarea>
       </div>
       <button class="btn ghost small" x-show="!noteOpen && !card.notes" @click="noteOpen = true">+ Add a note to the client</button>
 
@@ -370,12 +673,45 @@
 
   <!-- ── Deal rules (Deal Policy) ─────────────────────────────── -->
   <section class="screen settings" x-show="screen === 'settings'">
-    <h1>Your deal rules</h1>
-    <p class="hint">When a client asks for a better price, SayInvoice negotiates inside these
-      rules. Anything outside them comes to you first.</p>
+    <h1>Settings</h1>
+    <p class="hint">Your business, and the deal rules: when a client asks for a better price,
+      SayInvoice negotiates inside them. Anything outside them comes to you first.</p>
 
     <template x-if="policy">
       <form @submit.prevent="savePolicy()">
+        <h2 class="group-title">Your business</h2>
+        <template x-if="biz">
+        <div class="group">
+          <label class="setting stacked-setting">
+            <span class="setting-text"><b>Business name</b></span>
+            <input class="control" type="text" x-model="biz.business_name" maxlength="120" required>
+          </label>
+          <label class="setting stacked-setting">
+            <span class="setting-text"><b>Your first name</b><small>Signs reminders and agent messages.</small></span>
+            <input class="control" type="text" x-model="biz.owner_name" maxlength="120">
+          </label>
+          <label class="setting stacked-setting">
+            <span class="setting-text"><b>What you do</b><small>Shown under your name on quotes and payment pages.</small></span>
+            <input class="control" type="text" x-model="biz.trade" maxlength="40" list="trade-list" placeholder="e.g. Plumber">
+            <datalist id="trade-list"><template x-for="t in TRADES.filter((t) => t.key !== 'other')" :key="t.key"><option :value="t.label"></option></template></datalist>
+          </label>
+          <label class="setting">
+            <span class="setting-text"><b>Currency</b></span>
+            <select class="control currency-pick" x-model="biz.currency">
+              <template x-for="c in (biz?.currencies || [])" :key="c"><option :value="c" x-text="c" :selected="c === biz.currency"></option></template>
+            </select>
+          </label>
+          <label class="setting">
+            <span class="setting-text"><b>Invoices due after</b><small>0 means on receipt.</small></span>
+            <span class="input-group fixed"><input class="num" type="number" inputmode="numeric" min="0" max="90" x-model.number="biz.default_due_days" required><span class="addon">days</span></span>
+          </label>
+          <label class="setting stacked-setting">
+            <span class="setting-text"><b>Note on every invoice</b><small>Unless a job has its own note.</small></span>
+            <textarea class="control" rows="2" x-model="biz.invoice_note" maxlength="1000" placeholder="e.g. Thanks for your business!"></textarea>
+          </label>
+        </div>
+        </template>
+
         <h2 class="group-title">Discounts</h2>
         <div class="group">
           <label class="setting">
@@ -449,11 +785,25 @@
         </div>
       </form>
     </template>
+    {% if signed_in %}
+    <form class="signout" method="post" action="/logout">
+      <button class="btn ghost" type="submit">Sign out of this device</button>
+    </form>
+    {% endif %}
   </section>
 
   <!-- ── Who owes me ─────────────────────────────────────────── -->
   <section class="screen money" x-show="screen === 'money'">
     <h1 class="sr-only">Who owes me</h1>
+    <template x-if="!home">
+      <div class="loading" aria-busy="true" aria-label="Loading">
+        <div class="skel skel-hero"></div>
+        <div class="skel-row"><div class="skel skel-stat"></div><div class="skel skel-stat"></div></div>
+        <div class="skel skel-tabs"></div>
+        <div class="skel skel-line"></div><div class="skel skel-line"></div><div class="skel skel-line short"></div>
+        <p class="load-failed" x-show="loadFailed.home">Couldn't load this. <button class="link" @click="loadHome()">Try again</button></p>
+      </div>
+    </template>
     <template x-if="home">
       <div>
         <div class="hero-stat">
@@ -555,6 +905,15 @@
   <!-- ── Job page ───────────────────────────────────────────────── -->
   <section class="screen detail" x-show="screen === 'detail'">
     <button class="back" @click="openMoney()">‹ Who owes me</button>
+    <template x-if="!detail">
+      <div class="loading" aria-busy="true" aria-label="Loading">
+        <div class="skel skel-kicker"></div>
+        <div class="skel skel-title"></div>
+        <div class="skel skel-card"></div>
+        <div class="skel skel-line"></div><div class="skel skel-line short"></div>
+        <p class="load-failed" x-show="loadFailed.detail">Couldn't load this job. <button class="link" @click="refreshDetail()">Try again</button></p>
+      </div>
+    </template>
     <template x-if="detail">
       <div>
         <p class="doc-kicker" x-text="detail.reference"></p>
@@ -704,7 +1063,7 @@
   <section class="sheet" x-show="approval" x-transition role="dialog" aria-modal="true" aria-labelledby="approval-title">
     <template x-if="approval">
       <div>
-        <p class="sheet-kicker" x-text="`${approval.number} · ${approval.client_name || 'Client'}${approvals.length > 1 ? ` · 1 of ${approvals.length}` : ''}`"></p>
+        <p class="sheet-kicker" x-text="`${approval.number} · ${approval.client_name || 'Client'}${waiting.length > 1 ? ` · 1 of ${waiting.length}` : ''}`"></p>
         <h2 id="approval-title">A client needs your answer</h2>
         <blockquote class="asked" x-text="`“${approval.client_text}”`"></blockquote>
         <p class="sheet-summary" x-text="approval.summary"></p>
@@ -747,7 +1106,9 @@
           <button class="btn" :class="{ primary: !approval.violations.length || newWork() }" :disabled="deciding" @click="replying = true; counter.note = ''">Reply</button>
           <button class="btn" x-show="approval.kind !== 'plan'" :disabled="deciding" @click="startCounter()">Counter-offer</button>
           <button class="btn ghost danger" :disabled="deciding" @click="decide('decline')">Decline</button>
+          <button class="btn ghost" :disabled="deciding" @click="answerLater()">Later</button>
         </div>
+        <p class="sheet-later" x-show="!countering && !replying">The client is told you'll come back to them. It stays on the job page.</p>
         <div class="sheet-actions" x-show="replying">
           <button class="btn primary" :disabled="deciding || !counter.note.trim()" @click="decide('reply')">Send answer</button>
           <button class="btn ghost" :disabled="deciding" @click="replying = false">Back</button>

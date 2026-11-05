@@ -346,28 +346,53 @@ def amounts_in(text: str) -> list[Decimal]:
     return [_to_decimal(m.group(1) or m.group(2)) for m in _AMOUNT.finditer(text)]
 
 
+# "50%", "50 %", "50 percent", and the same in the client languages we write in.
+_PCT = re.compile(
+    r"(\d{1,3}(?:[.,]\d{1,2})?)\s?(?:%|\bper ?cent\b|\bpercent\b|\bpor ?ciento\b|"
+    r"\bpour ?cent\b|\bprozent\b|\bper ?cento\b|\bpor ?cento\b|\bprocent\w*)",
+    re.IGNORECASE,
+)
+
+
+def percents_in(text: str) -> list[Decimal]:
+    return [Decimal(m.group(1).replace(",", ".")) for m in _PCT.finditer(text)]
+
+
 def check_reply(
-    text: str, priced: PricedOffer | None, base: QuoteTerms, also: set[Decimal] = frozenset()
-) -> list[Violation]:
+    text: str, priced: PricedOffer | None, base: QuoteTerms, also: set[Decimal] = frozenset(),
+    *, percents: set[Decimal] | None = None,
+) -> list[Violation]:  # fmt: skip
     """Every money amount the agent writes must be one code computed.
 
     "Sure, £10 all in!" with a real total of £117 is caught here, even if the
-    structured offer itself is fine.
+    structured offer itself is fine. With `percents`, so is "50% off!" next to an
+    offer that code priced at 10%: the words must match the numbers under them.
     """
     cur = base.currency
     allowed = (priced.amounts() if priced else set()) | {base.total} | set(also)
     allowed = {to_money(a, cur) for a in allowed}
     wrong = [a for a in amounts_in(text) if to_money(a, cur) not in allowed]
-    if not wrong:
-        return []
-    return [
-        Violation(
+    out = []
+    if wrong:
+        out.append(Violation(
             "wrong_amount_in_reply",
             "malformed",
             f"the reply mentions {', '.join(str(a) for a in wrong)}, which isn't an amount in "
             "the offer; only quote the computed total, deposit and line totals",
-        )
-    ]
+        ))  # fmt: skip
+    if percents is not None:
+        ok = set(percents) | {base.deposit_pct}
+        if priced is not None:
+            ok |= {priced.discount_pct, priced.deposit_pct}
+        bad_pct = [p for p in percents_in(text) if p not in ok]
+        if bad_pct:
+            out.append(Violation(
+                "wrong_percent_in_reply",
+                "malformed",
+                f"the reply says {', '.join(f'{p}%' for p in bad_pct)}, which isn't in the "
+                "offer; only state the offer's own discount and deposit percentages",
+            ))  # fmt: skip
+    return out
 
 
 # ── payment plans ────────────────────────────────────────────────────────────

@@ -10,7 +10,7 @@ import hashlib
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, Request
-from fastapi.responses import HTMLResponse
+from fastapi.responses import HTMLResponse, JSONResponse, Response
 from fastapi.templating import Jinja2Templates
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -19,6 +19,7 @@ from app.i18n import LANGUAGES
 from app.services.invoicing import default_workspace
 from app.services.policy import get_policy
 from app.settings import Settings, get_settings
+from app.voice.tts import effective_engine
 
 APP_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = APP_DIR / "static"
@@ -52,13 +53,59 @@ async def app_page(
         "app.html",
         {
             "business_name": ws.business_name,
+            "onboarded": ws.onboarded,
+            "owner_name": ws.owner_name,
+            "invoice_note": ws.invoice_note,
+            "trade": ws.trade,
             "currency": ws.currency,
             "default_due_days": ws.default_due_days,
             "min_deposit": float(policy.min_deposit_pct),
-            "tts_engine": settings.tts_engine,
+            "tts_engine": effective_engine(settings.tts_engine),
             "languages": LANGUAGES,
             "v": ASSET_VERSION,
+            "signed_in": bool(settings.owner_passcode),
         },
+    )
+
+
+@router.get("/manifest.webmanifest")
+async def manifest(
+    session: AsyncSession = Depends(get_session), settings: Settings = Depends(get_settings)
+) -> JSONResponse:
+    """Lets "Add to Home Screen" install SayInvoice as an app."""
+    ws = await default_workspace(session, settings)
+    icons = "/static/icons"
+    return JSONResponse(
+        {
+            "name": f"SayInvoice · {ws.business_name}" if ws.onboarded else "SayInvoice",
+            "short_name": "SayInvoice",
+            "description": "Say a job, send a PayPal invoice.",
+            "start_url": "/",
+            "scope": "/",
+            "display": "standalone",
+            "orientation": "portrait",
+            "background_color": "#f4f4f0",
+            "theme_color": "#0b6b46",
+            "icons": [
+                {"src": f"{icons}/icon-192.png", "sizes": "192x192", "type": "image/png"},
+                {"src": f"{icons}/icon-512.png", "sizes": "512x512", "type": "image/png"},
+                {"src": f"{icons}/maskable-512.png", "sizes": "512x512", "type": "image/png",
+                 "purpose": "maskable"},
+                {"src": f"{icons}/icon.svg", "sizes": "any", "type": "image/svg+xml"},
+            ],
+        },
+        media_type="application/manifest+json",
+    )  # fmt: skip
+
+
+@router.get("/sw.js")
+async def service_worker() -> Response:
+    """Served from the root so it can look after the whole app, not just /static."""
+    body = (STATIC_DIR / "sw.js").read_text().replace("__VERSION__", ASSET_VERSION)
+    return Response(
+        body,
+        media_type="text/javascript",
+        headers={"Cache-Control": "no-cache", "Service-Worker-Allowed": "/"},
     )
 
 

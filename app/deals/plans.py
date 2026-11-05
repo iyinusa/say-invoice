@@ -27,6 +27,7 @@ from app.deals.negotiator import (
     OfferUnavailable,
     TooManyMessages,
     first_name,
+    one_line,
 )
 from app.i18n import LANGUAGES, t
 from app.i18n import base as base_lang
@@ -164,8 +165,8 @@ async def client_message(
     lines = []
     for m in msgs:
         who = {"client": "Client", "agent": "You", "owner": f"Owner ({owner})"}[m.role]
-        lines.append(f"{who}: {m.text} {describe_plan(m.priced)}".rstrip())
-    conversation = "Conversation so far:\n" + "\n".join(lines + [f"Client: {text}"])
+        lines.append(f"{who}: {one_line(m.text)} {describe_plan(m.priced)}".rstrip())
+    conversation = "Conversation so far:\n" + "\n".join(lines + [f"Client: {one_line(text)}"])
 
     feedback = ""
     turn: PlanTurn | None = None

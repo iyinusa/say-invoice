@@ -49,21 +49,51 @@ class PayPalError(Exception):
         )
         super().__init__(f"PayPal {status} {self.name}: {message}")
 
+    @classmethod
+    def unreachable(cls, exc: Exception) -> PayPalError:
+        """No answer at all (timeout, no connection): status 0, never a 500 for the user."""
+        return cls(0, {"name": "NETWORK", "message": type(exc).__name__})
+
     def human(self) -> str:
         """One plain-English sentence for the UI. The full payload goes to the logs."""
+        if self.status == 0:
+            return "Couldn't reach PayPal. Check your signal and try again. Nothing was sent twice."
         if self.status == 401:
             return "PayPal didn't accept our credentials. Check the client ID and secret."
-        issues = {str(d.get("issue", "")) for d in self.details}
-        if "USER_NOT_FOUND" in issues or "INVALID_INVOICER_EMAIL" in issues:
+        if self.status == 429:
+            return "PayPal is busy right now. Try again in a minute."
+        if self.status >= 500:
+            return (
+                "PayPal is having trouble right now. Try again in a minute. Nothing was sent twice."
+            )
+        issues = {str(d.get("issue", "")).upper() for d in self.details} | {self.name.upper()}
+        fields = " ".join(str(d.get("field", "")) for d in self.details).lower()
+        if issues & {"USER_NOT_FOUND", "INVALID_INVOICER_EMAIL"}:
             return "The invoicer email must be the email of the PayPal business account."
         if "DUPLICATE_INVOICE_NUMBER" in issues:
             return "That invoice number has been used already."
-        if self.details:
-            first = self.details[0]
-            text = first.get("description") or first.get("issue") or ""
-            if text:
-                return f"PayPal said: {text}"
-        return "PayPal couldn't complete that just now. Please try again."
+        if any("CURRENCY" in i for i in issues) or "currency_code" in fields:
+            return "PayPal can't invoice in that currency from this account."
+        if "email_address" in fields or any("EMAIL" in i for i in issues):
+            return "PayPal didn't accept the client's email address. Check it and try again."
+        if "due_date" in fields or "invoice_date" in fields:
+            return "PayPal didn't accept the due date. Pick today or a later date."
+        if "unit_amount" in fields or "amount" in fields:
+            return "PayPal didn't accept one of the amounts. Check the prices."
+        if "quantity" in fields:
+            return "PayPal didn't accept one of the quantities."
+        if "/items" in fields and "name" in fields:
+            return "One of the item names is empty or too long for PayPal."
+        if any(re.search(r"(^|_)PAID(_|$)", i) for i in issues):  # not "UNPAID"
+            return "PayPal says that invoice is already paid."
+        if any("CANCEL" in i for i in issues):
+            return "PayPal won't cancel that invoice now: it may be paid or already cancelled."
+        if self.status == 403 or "PERMISSION_DENIED" in issues or "NOT_AUTHORIZED" in issues:
+            return ("PayPal didn't allow that for this account. In the PayPal developer "
+                    "dashboard, check the app has Invoicing turned on.")  # fmt: skip
+        if self.status == 404 or "RESOURCE_NOT_FOUND" in issues:
+            return "PayPal can't find that invoice. It may have been deleted in PayPal."
+        return "PayPal couldn't complete that. Check the details and try again."
 
 
 class PayPalClient:
@@ -92,11 +122,14 @@ class PayPalClient:
         async with self._token_lock:
             if not force and self._token and time.monotonic() < self._token_expires_at:
                 return self._token
-            resp = await self._http.post(
-                "/v1/oauth2/token",
-                data={"grant_type": "client_credentials"},
-                auth=(self._client_id, self._client_secret),
-            )
+            try:
+                resp = await self._http.post(
+                    "/v1/oauth2/token",
+                    data={"grant_type": "client_credentials"},
+                    auth=(self._client_id, self._client_secret),
+                )
+            except httpx.TransportError as exc:
+                raise PayPalError.unreachable(exc) from exc
             if resp.status_code != 200:
                 raise PayPalError(resp.status_code, _json_or_none(resp))
             payload = resp.json()
@@ -123,11 +156,19 @@ class PayPalClient:
         if representation:
             headers["Prefer"] = "return=representation"
 
+        # A dropped connection is retried once, but only when that's safe: reads, and
+        # writes carrying a PayPal-Request-Id (PayPal applies those at most once).
+        safe_to_retry = method == "GET" or request_id is not None
         for attempt in (1, 2):
             headers["Authorization"] = f"Bearer {await self._access_token(force=attempt == 2)}"
-            resp = await self._http.request(
-                method, path, json=json_body, content=content, params=params, headers=headers
-            )
+            try:
+                resp = await self._http.request(
+                    method, path, json=json_body, content=content, params=params, headers=headers
+                )
+            except httpx.TransportError as exc:
+                if attempt == 1 and safe_to_retry:
+                    continue
+                raise PayPalError.unreachable(exc) from exc
             # A token revoked server-side before its expiry: refresh once and retry.
             if resp.status_code == 401 and attempt == 1:
                 continue

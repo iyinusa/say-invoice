@@ -33,6 +33,7 @@ from app.schemas.quote import (
     QuoteIn,
     QuoteOut,
 )
+from app.security.ratelimit import CLIENT_ACTION, CLIENT_CHAT
 from app.services import clock, final, invoicing, payments, quotes
 from app.services import policy as policies
 from app.settings import Settings, get_settings
@@ -261,7 +262,7 @@ async def client_messages(
     return await _conversation(session, await _quote_or_404(token, session))
 
 
-@public.post("/{token}/messages")
+@public.post("/{token}/messages", dependencies=[Depends(CLIENT_CHAT)])
 async def post_client_message(
     token: str,
     data: ClientMessageIn,
@@ -281,7 +282,7 @@ async def post_client_message(
     return await _conversation(session, q)
 
 
-@public.post("/{token}/offers/{message_id}/accept")
+@public.post("/{token}/offers/{message_id}/accept", dependencies=[Depends(CLIENT_ACTION)])
 async def accept_offer(
     token: str,
     message_id: str,
@@ -368,6 +369,7 @@ async def quote_page(
             "valid_until": i18n.fmt_date(q.valid_until, lang, year=True),
             "job_date": i18n.fmt_date(q.job_date, lang, weekday=True) if q.job_date else "",
             "business_name": ws.business_name if ws else "",
+            "trade": ws.trade if ws else "",
             "lines": lines,
             "total": display(q.total, q.currency),
             "deposit": display(deposit, q.currency),
@@ -408,7 +410,7 @@ async def quote_status(
     return await _status(session, q, settings)
 
 
-@public.post("/{token}/accept")
+@public.post("/{token}/accept", dependencies=[Depends(CLIENT_ACTION)])
 async def accept_quote(
     token: str,
     data: AcceptIn,

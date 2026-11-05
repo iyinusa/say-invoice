@@ -14,13 +14,33 @@ COPY --from=ghcr.io/astral-sh/uv:0.11.17 /uv /bin/uv
 WORKDIR /app
 ENV UV_COMPILE_BYTECODE=1 UV_LINK_MODE=copy UV_PYTHON_DOWNLOADS=never
 
+# Optional KokoroTTS server voice (SI_TTS_ENGINE=kokoro). Off by default: it adds
+# PyTorch and a ~330 MB model. Build with `--build-arg INSTALL_TTS=true` (compose:
+# SI_INSTALL_TTS=true). The phone's own voice is used whenever it isn't installed.
+ARG INSTALL_TTS=false
+ENV HF_HOME=/opt/hf
+RUN if [ "$INSTALL_TTS" = "true" ]; then \
+      apt-get update && apt-get install -y --no-install-recommends espeak-ng \
+      && rm -rf /var/lib/apt/lists/*; \
+    fi
+
 COPY pyproject.toml uv.lock .python-version ./
-RUN uv sync --frozen --no-dev --no-install-project
+RUN if [ "$INSTALL_TTS" = "true" ]; then \
+      uv sync --frozen --no-dev --no-install-project --extra tts; \
+    else \
+      uv sync --frozen --no-dev --no-install-project; \
+    fi
 
 COPY . .
 
 ENV PATH="/app/.venv/bin:$PATH" \
     SI_PAYPAL_MCP_COMMAND="node /opt/paypal-mcp/node_modules/@paypal/mcp/dist/index.js"
+
+# With the voice installed, download the model and every voice pack now and warm it
+# once, so nothing is fetched at runtime. At startup the app preloads it from disk
+# (SI_TTS_PRELOAD), and HF_HUB_OFFLINE stops Hugging Face checking for updates.
+RUN if [ "$INSTALL_TTS" = "true" ]; then python -m app.voice.tts; fi
+ENV HF_HUB_OFFLINE=${INSTALL_TTS}
 
 EXPOSE 8000
 CMD ["sh", "-c", "alembic upgrade head && exec uvicorn app.main:app --host 0.0.0.0 --port ${PORT:-8000} --proxy-headers --forwarded-allow-ips='*'"]

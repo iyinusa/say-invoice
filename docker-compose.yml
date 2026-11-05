@@ -5,7 +5,11 @@
 # so it survives rebuilds; point SI_DATABASE_URL at Postgres to use that instead.
 services:
   app:
-    build: .
+    build:
+      context: .
+      args:
+        # true adds the KokoroTTS server voice (set SI_TTS_ENGINE=kokoro to use it)
+        INSTALL_TTS: ${SI_INSTALL_TTS:-false}
     image: sayinvoice:dev
     env_file: .env
     ports:

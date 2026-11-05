@@ -7,6 +7,12 @@ envVarGroups:
         value: production
       - key: SI_PUBLIC_BASE_URL
         sync: false
+      # The owner app's passcode (required in production; client pages stay public).
+      - key: SI_OWNER_PASSCODE
+        sync: false
+      # Signs the sign-in cookie. Render generates it; regenerating it signs every device out.
+      - key: SI_SESSION_SECRET
+        generateValue: true
       - key: SI_PAYPAL_ENV
         value: sandbox
       - key: SI_PAYPAL_CLIENT_ID

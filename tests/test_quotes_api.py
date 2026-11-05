@@ -121,6 +121,17 @@ def test_client_page_shows_the_quote(client: TestClient) -> None:
         assert text in html, text
     assert resp.headers["cache-control"] == "no-store"
     assert "noindex" in html
+    assert "doc-trade" not in html  # no trade set: no empty line under the name
+
+
+def test_client_page_shows_the_trade(client: TestClient) -> None:
+    ws = client.get("/api/workspace").json()
+    client.put("/api/workspace", json={**{k: ws[k] for k in ("business_name", "owner_name",
+               "currency", "default_due_days")}, "trade": "Plumber & Gas Engineer"})  # fmt: skip
+    q = client.post("/api/quotes", json=_quote()).json()
+    assert (
+        '<p class="doc-trade">Plumber &amp; Gas Engineer</p>' in client.get(f"/q/{_token(q)}").text
+    )
 
 
 def test_unknown_link_is_a_friendly_404(client: TestClient) -> None:
