@@ -1,20 +1,40 @@
 # Render Blueprint: one click deploys the app, the Chase Agent's hourly run and the database.
-# Secrets live in one env group with `sync: false`, so Render asks for them once.
+# Non-secret settings live in an env group. Secrets are `sync: false` on the web service
+# (Render can't prompt for them inside an env group), so Render asks for them once, and
+# the cron job copies them from the web service with `fromService`.
 envVarGroups:
   - name: sayinvoice-shared
     envVars:
       - key: SI_ENV
         value: production
+      - key: SI_PAYPAL_ENV
+        value: sandbox
+      - key: SI_GEMINI_MODEL
+        value: gemini-3.5-flash
+      - key: SI_GEMINI_THINKING_LEVEL
+        value: minimal
+
+services:
+  - type: web
+    name: sayinvoice
+    runtime: docker
+    plan: 0.5c-512mb
+    healthCheckPath: /healthz
+    envVars:
+      - fromGroup: sayinvoice-shared
+      - key: SI_DATABASE_URL
+        fromDatabase:
+          name: sayinvoice-db
+          property: connectionString
+      # Signs the sign-in cookie. Render generates it; regenerating it signs every device out.
+      - key: SI_SESSION_SECRET
+        generateValue: true
+      # Asked for once, at Blueprint creation.
       - key: SI_PUBLIC_BASE_URL
         sync: false
       # The owner app's passcode (required in production; client pages stay public).
       - key: SI_OWNER_PASSCODE
         sync: false
-      # Signs the sign-in cookie. Render generates it; regenerating it signs every device out.
-      - key: SI_SESSION_SECRET
-        generateValue: true
-      - key: SI_PAYPAL_ENV
-        value: sandbox
       - key: SI_PAYPAL_CLIENT_ID
         sync: false
       - key: SI_PAYPAL_CLIENT_SECRET
@@ -25,29 +45,12 @@ envVarGroups:
         sync: false
       - key: SI_GOOGLE_API_KEY
         sync: false
-      - key: SI_GEMINI_MODEL
-        value: gemini-3.5-flash
-      - key: SI_GEMINI_THINKING_LEVEL
-        value: minimal
-
-services:
-  - type: web
-    name: sayinvoice
-    runtime: docker
-    plan: starter
-    healthCheckPath: /healthz
-    envVars:
-      - fromGroup: sayinvoice-shared
-      - key: SI_DATABASE_URL
-        fromDatabase:
-          name: sayinvoice-db
-          property: connectionString
 
   # The Chase Agent: every hour, check overdue invoices and draft (or send) reminders.
   - type: cron
     name: sayinvoice-chase
     runtime: docker
-    plan: starter
+    plan: 0.5c-512mb
     schedule: "0 * * * *"
     dockerCommand: python -m scripts.run_chase
     envVars:
@@ -56,9 +59,25 @@ services:
         fromDatabase:
           name: sayinvoice-db
           property: connectionString
+      - key: SI_PUBLIC_BASE_URL
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_PUBLIC_BASE_URL }
+      - key: SI_PAYPAL_CLIENT_ID
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_PAYPAL_CLIENT_ID }
+      - key: SI_PAYPAL_CLIENT_SECRET
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_PAYPAL_CLIENT_SECRET }
+      - key: SI_PAYPAL_MERCHANT_EMAIL
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_PAYPAL_MERCHANT_EMAIL }
+      - key: SI_PAYPAL_WEBHOOK_ID
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_PAYPAL_WEBHOOK_ID }
+      - key: SI_GOOGLE_API_KEY
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_GOOGLE_API_KEY }
+      - key: SI_OWNER_PASSCODE
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_OWNER_PASSCODE }
+      - key: SI_SESSION_SECRET
+        fromService: { type: web, name: sayinvoice, envVarKey: SI_SESSION_SECRET }
 
 databases:
   - name: sayinvoice-db
-    plan: basic-256mb
+    plan: 0.1c-256mb
     databaseName: sayinvoice
     user: sayinvoice
