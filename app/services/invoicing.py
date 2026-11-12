@@ -44,6 +44,10 @@ class PayPalInvoicing(Protocol):
         self, body: Mapping[str, Any], *, request_id: str | None = None
     ) -> dict[str, Any]: ...
     async def send_invoice(self, invoice_id: str, *, request_id: str | None = None) -> str: ...
+    async def get_invoice(self, invoice_id: str) -> dict[str, Any]: ...
+    async def update_invoice(
+        self, invoice_id: str, body: Mapping[str, Any], *, notify_recipient: bool = True
+    ) -> dict[str, Any]: ...
     async def generate_qr_code(self, invoice_id: str, *, size: int = 500) -> bytes: ...
 
 
@@ -243,6 +247,30 @@ def to_paypal_draft(inv: Invoice, ws: Workspace, today: date) -> InvoiceDraft:
     )
 
 
+async def _refresh_draft_invoicer(
+    paypal: PayPalInvoicing, inv: Invoice, ws: Workspace, today: date
+) -> None:
+    """A retry reuses the PayPal draft, which keeps the invoicer it was created with.
+    PayPal only checks the invoicer email at send, so a draft made before the merchant
+    email was fixed would fail every retry. Bring the draft's invoicer up to date first."""
+    remote = await paypal.get_invoice(inv.paypal_invoice_id)
+    if remote.get("status") != "DRAFT":
+        return
+    want = build_invoice_body(to_paypal_draft(inv, ws, today))["invoicer"]
+    have = remote.get("invoicer") or {}
+    if have.get("email_address", "") == want.get("email_address", ""):
+        return
+    log.info(
+        "paypal_draft_invoicer_refreshed",
+        invoice_id=inv.id,
+        old=have.get("email_address", ""),
+        new=want.get("email_address", ""),
+    )
+    await paypal.update_invoice(
+        inv.paypal_invoice_id, {**remote, "invoicer": want}, notify_recipient=False
+    )
+
+
 async def push_to_paypal(
     session: AsyncSession, paypal: PayPalInvoicing, ws: Workspace, inv: Invoice, *, today: date
 ) -> Invoice:
@@ -257,6 +285,8 @@ async def push_to_paypal(
             created = await paypal.create_draft_invoice(body, request_id=f"{request_prefix}-create")
             inv.paypal_invoice_id = str(created["id"])
             await session.commit()
+        else:
+            await _refresh_draft_invoicer(paypal, inv, ws, today)
         href = await paypal.send_invoice(inv.paypal_invoice_id, request_id=f"{request_prefix}-send")
     except PayPalError as exc:
         log.warning("paypal_send_failed", invoice_id=inv.id, error=str(exc), debug_id=exc.debug_id)

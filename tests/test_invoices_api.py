@@ -202,6 +202,38 @@ def test_failed_send_is_retried_without_creating_again(
     assert paypal.count("send") == 2
 
 
+def test_retry_brings_a_stale_draft_invoicer_up_to_date(
+    client: TestClient, paypal: FakePayPal
+) -> None:
+    # The first send was refused (wrong merchant email); the email has since been fixed.
+    paypal.fail["send"] = [
+        PayPalError(422, {"name": "UNPROCESSABLE_ENTITY", "details": [{"issue": "USER_NOT_FOUND"}]})
+    ]
+    assert client.post("/api/invoices", json=_payload()).status_code == 502
+    created = paypal.last("create")["body"]
+    paypal.remote["INV2-1"] = {
+        "id": "INV2-1",
+        "status": "DRAFT",
+        "invoicer": {**created["invoicer"], "email_address": "wrong@example.com"},
+    }
+
+    resp = client.post("/api/invoices", json=_payload())
+    assert resp.status_code == 201, resp.text
+    assert paypal.count("create") == 1
+    update = paypal.last("update")
+    assert update["invoice_id"] == "INV2-1"
+    assert update["body"]["invoicer"] == created["invoicer"]
+
+
+def test_retry_leaves_an_up_to_date_draft_alone(client: TestClient, paypal: FakePayPal) -> None:
+    paypal.fail["send"] = [_boom()]
+    assert client.post("/api/invoices", json=_payload()).status_code == 502
+    created = paypal.last("create")["body"]
+    paypal.remote["INV2-1"] = {"id": "INV2-1", "status": "DRAFT", "invoicer": created["invoicer"]}
+    assert client.post("/api/invoices", json=_payload()).status_code == 201
+    assert paypal.count("update") == 0
+
+
 def test_edit_after_a_failure_before_paypal_saw_it_replaces_the_draft(
     client: TestClient, paypal: FakePayPal
 ) -> None:
