@@ -1572,7 +1572,11 @@ window.sayInvoice = () => ({
   },
   quoteMessage() {
     const q = this.quote;
-    const who = q.client_name ? `Hi ${q.client_name.split(" ")[0]}, here` : "Here";
+    // "Mrs Patel" → "Hi Mrs Patel", "Sarah Patel" → "Hi Sarah": never just "Hi Mrs".
+    const parts = (q.client_name || "").trim().split(/\s+/).filter(Boolean);
+    const titled = /^(mr|mrs|ms|miss|mx|dr)\.?$/i.test(parts[0] || "");
+    const name = titled ? parts.join(" ") : parts[0];
+    const who = name ? `Hi ${name}, here` : "Here";
     return `${who}'s your quote for ${this.money(this.toCents(q.total), q.currency)}. You can accept it and book here: ${q.public_url}`;
   },
   smsLink() {
